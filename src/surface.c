@@ -274,6 +274,90 @@ static void convert_yv12_to_xrgb(uint8_t *restrict src_y_,
     }
 }
 
+int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type)
+{
+    int ret;
+
+    switch (type) {
+    case READ_START:
+    case READ_END:
+        if (!(surf->flags & SURFACE_DATA_NEEDS_SYNC)) {
+            return 0;
+        }
+        break;
+    case WRITE_START:
+    case WRITE_END:
+        break;
+    }
+
+    assert(surf->flags & SURFACE_VIDEO);
+
+    switch (type) {
+    case READ_START:
+        ret = sync_dmabuf_read_start(surf->frame->y_fd);
+        break;
+    case READ_END:
+        ret = sync_dmabuf_read_end(surf->frame->y_fd);
+        break;
+    case WRITE_START:
+        ret = sync_dmabuf_write_start(surf->frame->y_fd);
+        break;
+    case WRITE_END:
+        ret = sync_dmabuf_write_end(surf->frame->y_fd);
+        break;
+    }
+
+    assert(ret == 0);
+
+    if (ret) {
+        return ret;
+    }
+
+    switch (type) {
+    case READ_START:
+        ret = sync_dmabuf_read_start(surf->frame->cb_fd);
+        break;
+    case READ_END:
+        ret = sync_dmabuf_read_end(surf->frame->cb_fd);
+        break;
+    case WRITE_START:
+        ret = sync_dmabuf_write_start(surf->frame->cb_fd);
+        break;
+    case WRITE_END:
+        ret = sync_dmabuf_write_end(surf->frame->cb_fd);
+        break;
+    }
+
+    assert(ret == 0);
+
+    if (ret) {
+        return ret;
+    }
+
+    switch (type) {
+    case READ_START:
+        ret = sync_dmabuf_read_start(surf->frame->cr_fd);
+        break;
+    case READ_END:
+        ret = sync_dmabuf_read_end(surf->frame->cr_fd);
+        break;
+    case WRITE_START:
+        ret = sync_dmabuf_write_start(surf->frame->cr_fd);
+        break;
+    case WRITE_END:
+        ret = sync_dmabuf_write_end(surf->frame->cr_fd);
+        break;
+    }
+
+    assert(ret == 0);
+
+    if (ret) {
+        return ret;
+    }
+
+    return 0;
+}
+
 int convert_video_surf(tegra_surface *surf, VdpCSCMatrix cscmat)
 {
     pixman_image_t *pix = surf->pix;
@@ -287,30 +371,10 @@ int convert_video_surf(tegra_surface *surf, VdpCSCMatrix cscmat)
         return 0;
     }
 
-    if (surf->flags & SURFACE_DATA_NEEDS_SYNC) {
-        ret = sync_dmabuf_read_start(surf->frame->y_fd);
+    ret = sync_video_frame_dmabufs(surf, READ_START);
 
-        assert(ret == 0);
-
-        if (ret) {
-            return ret;
-        }
-
-        ret = sync_dmabuf_read_start(surf->frame->cb_fd);
-
-        assert(ret == 0);
-
-        if (ret) {
-            return ret;
-        }
-
-        ret = sync_dmabuf_read_start(surf->frame->cr_fd);
-
-        assert(ret == 0);
-
-        if (ret) {
-            return ret;
-        }
+    if (ret) {
+        return ret;
     }
 
     convert_yv12_to_xrgb(surf->y_data, surf->cb_data, surf->cr_data,
@@ -321,30 +385,10 @@ int convert_video_surf(tegra_surface *surf, VdpCSCMatrix cscmat)
 
     surf->flags &= ~SURFACE_YUV_UNCONVERTED;
 
-    if (surf->flags & SURFACE_DATA_NEEDS_SYNC) {
-        ret = sync_dmabuf_read_end(surf->frame->y_fd);
+    ret = sync_video_frame_dmabufs(surf, READ_END);
 
-        assert(ret == 0);
-
-        if (ret) {
-            return ret;
-        }
-
-        ret = sync_dmabuf_read_end(surf->frame->cb_fd);
-
-        assert(ret == 0);
-
-        if (ret) {
-            return ret;
-        }
-
-        ret = sync_dmabuf_read_end(surf->frame->cr_fd);
-
-        assert(ret == 0);
-
-        if (ret) {
-            return ret;
-        }
+    if (ret) {
+        return ret;
     }
 
     surf->flags &= ~SURFACE_DATA_NEEDS_SYNC;

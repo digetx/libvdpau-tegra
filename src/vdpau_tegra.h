@@ -155,6 +155,15 @@ int sync_dmabuf_read_start(int dmabuf_fd);
 
 int sync_dmabuf_read_end(int dmabuf_fd);
 
+enum frame_sync {
+    READ_START,
+    READ_END,
+    WRITE_START,
+    WRITE_END,
+};
+
+int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type);
+
 VdpGetErrorString                                   vdp_get_error_string;
 VdpGetProcAddress                                   vdp_get_proc_address;
 VdpGetApiVersion                                    vdp_get_api_version;
