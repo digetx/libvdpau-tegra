@@ -1,6 +1,7 @@
 AM_CFLAGS = -Wall $(X11_CFLAGS) $(PIXMAN_CFLAGS) $(CFLAG_VISIBILITY)
 
-lib_LTLIBRARIES = libvdpau_tegra.la
+vdpau_tegra_libdir = $(libdir)/vdpau
+vdpau_tegra_lib_LTLIBRARIES = libvdpau_tegra.la
 
 libvdpau_tegra_la_SOURCES = vdpau_tegra.c \
                             surface_output.c \
