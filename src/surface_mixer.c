@@ -97,11 +97,11 @@ VdpStatus vdp_video_mixer_query_parameter_value_range(
         break;
     case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_WIDTH:
         *(uint32_t *)min_value = 0;
-        *(uint32_t *)max_value = 1920;
+        *(uint32_t *)max_value = INT_MAX;
         break;
     case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_HEIGHT:
         *(uint32_t *)min_value = 0;
-        *(uint32_t *)max_value = 1200;
+        *(uint32_t *)max_value = INT_MAX;
         break;
     default:
         return VDP_STATUS_ERROR;

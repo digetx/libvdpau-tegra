@@ -369,9 +369,9 @@ VdpStatus vdp_decoder_query_capabilities(VdpDevice device,
                                          uint32_t *max_width,
                                          uint32_t *max_height)
 {
-    *max_width = 1936;
-    *max_height = 1936;
-    *max_macroblocks = 121 * 75;
+    *max_width = 2032;
+    *max_height = 2032;
+    *max_macroblocks = 9000;
 
     switch (profile) {
     case VDP_DECODER_PROFILE_H264_BASELINE:
@@ -413,10 +413,6 @@ VdpStatus vdp_decoder_create(VdpDevice device,
         break;
     default:
         return VDP_STATUS_INVALID_DECODER_PROFILE;
-    }
-
-    if (width > 1936 || height > 1936) {
-        return VDP_STATUS_RESOURCES;
     }
 
     pthread_mutex_lock(&global_lock);

@@ -33,8 +33,8 @@ VdpStatus vdp_video_surface_query_capabilities(
     }
 
     *is_supported = (surface_chroma_type == VDP_CHROMA_TYPE_420);
-    *max_width = 2048;
-    *max_height = 2048;
+    *max_width = INT_MAX;
+    *max_height = INT_MAX;
 
     return VDP_STATUS_OK;
 }
