@@ -23,6 +23,8 @@ $ make install
 $ VDPAU_DRIVER=tegra VDPAU_DRIVER_PATH=/path/to/compiled/libvdpau-tegra mpv --hwdec=vdpau --vo=vdpau video.mp4
 ```
 
+Video players that support internal VDPAU decode -> X11 output, like VLC, would yield better performance.
+
 # Todo:
 
 * Accelerated output to overlay
