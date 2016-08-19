@@ -20,7 +20,7 @@ $ make install
 # Usage example:
 
 ```
-$ VDPAU_DRIVER=tegra VDPAU_DRIVER_PATH=/path/to/libvdpau-tegra mpv --hwdec=vdpau --vo=vdpau video.mp4
+$ VDPAU_DRIVER=tegra VDPAU_DRIVER_PATH=/path/to/libvdpau_tegra.so mpv --hwdec=vdpau --vo=vdpau video.mp4
 ```
 
 Video players that support internal VDPAU decode -> X11 output, like VLC, would
