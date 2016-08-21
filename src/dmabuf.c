@@ -39,7 +39,7 @@ int alloc_dmabuf(int dev_fd, void **dmabuf_virt, size_t size)
 
     assert(*dmabuf_virt != MAP_FAILED);
 
-    if (dmabuf_virt == MAP_FAILED) {
+    if (*dmabuf_virt == MAP_FAILED) {
         *dmabuf_virt = NULL;
     }
 
