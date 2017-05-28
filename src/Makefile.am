@@ -14,5 +14,8 @@ libvdpau_tegra_la_SOURCES = vdpau_tegra.c \
                             dmabuf.c \
                             bitstream.c
 
-libvdpau_tegra_la_LDFLAGS = -version-info 1:0:0 -Wl,-z,defs
+libvdpau_tegra_la_LDFLAGS = -version-info 1:0:0 -module -Wl,-z,defs
 libvdpau_tegra_la_LIBADD  = -lm $(X11_LIBS) $(PIXMAN_LIBS) $(DRM_LIBS)
+
+pkgconfigdir = ${libdir}/pkgconfig
+pkgconfig_DATA = vdpau-tegra.pc

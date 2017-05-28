@@ -13,6 +13,7 @@ AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_LIBTOOL
+PKG_PROG_PKG_CONFIG
 gl_VISIBILITY
 
 # Checks for dependencies.
@@ -52,5 +53,6 @@ AC_TYPE_UINT8_T
 AC_CHECK_FUNCS([clock_gettime memset munmap])
 
 AC_CONFIG_FILES([Makefile
-                 src/Makefile])
+                 src/Makefile
+                 src/vdpau-tegra.pc])
 AC_OUTPUT

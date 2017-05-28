@@ -1,0 +1,5 @@
+prefix=@prefix@
+
+Name: vdpau-tegra
+Description: Open source NVIDIA Tegra2 VDPAU driver
+Version: @PACKAGE_VERSION@
