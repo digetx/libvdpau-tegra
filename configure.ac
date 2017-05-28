@@ -4,6 +4,8 @@
 AC_PREREQ([2.69])
 AC_INIT([libvdpau_tegra], [1.0.0], [digetx@gmail.com])
 AC_CONFIG_SRCDIR([src/vdpau_tegra.c])
+AC_CONFIG_HEADERS([config.h])
+AC_CONFIG_AUX_DIR(.)
 
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 
@@ -26,6 +28,10 @@ PKG_CHECK_MODULES(PIXMAN, pixman-1)
 AC_SUBST(PIXMAN_CFLAGS)
 AC_SUBST(PIXMAN_LIBS)
 
+PKG_CHECK_MODULES(DRM, [libdrm libdrm_tegra >= 2.4.81])
+AC_SUBST(DRM_CFLAGS)
+AC_SUBST(DRM_LIBS)
+
 # Checks for libraries.
 AC_CHECK_LIB([m], [sin])
 
@@ -43,8 +49,6 @@ AC_TYPE_UINT64_T
 AC_TYPE_UINT8_T
 
 # Checks for library functions.
-AC_FUNC_MALLOC
-AC_FUNC_MMAP
 AC_CHECK_FUNCS([clock_gettime memset munmap])
 
 AC_CONFIG_FILES([Makefile

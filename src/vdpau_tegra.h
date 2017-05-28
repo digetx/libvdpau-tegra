@@ -20,7 +20,12 @@
 #ifndef VDPAU_TEGRA_H
 #define VDPAU_TEGRA_H
 
+#if HAVE_CONFIG_H
+# include <config.h>
+#endif
+
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <math.h>
@@ -36,6 +41,10 @@
 #include <pixman.h>
 #include <vdpau/vdpau_x11.h>
 #include <X11/Xutil.h>
+
+#include <libdrm/tegra_drm.h>
+#include <libdrm/tegra.h>
+#include <xf86drm.h>
 
 #include "bitstream.h"
 #include "uapi/dma-buf.h"
@@ -59,12 +68,15 @@
 extern pthread_mutex_t global_lock;
 
 typedef struct tegra_device {
+    struct drm_tegra *drm;
     Display *display;
     int screen;
     int vde_fd;
+    int drm_fd;
 } tegra_device;
 
 typedef struct tegra_decoder {
+    struct drm_tegra_bo *bitstream_bo;
     VdpDevice device;
     bitstream_reader reader;
     int bitstream_data_fd;
@@ -106,6 +118,11 @@ typedef struct tegra_surface {
     void *y_data;
     void *cb_data;
     void *cr_data;
+
+    struct drm_tegra_bo *y_bo;
+    struct drm_tegra_bo *cb_bo;
+    struct drm_tegra_bo *cr_bo;
+    struct drm_tegra_bo *aux_bo;
 } tegra_surface;
 
 tegra_device * get_device(VdpDevice device);
@@ -142,10 +159,6 @@ uint32_t create_surface(tegra_device *dev,
 VdpStatus destroy_surface(tegra_surface *surf);
 
 int convert_video_surf(tegra_surface *surf, VdpCSCMatrix cscmat);
-
-int alloc_dmabuf(int dev_fd, void **dmabuf_virt, size_t size);
-
-void free_dmabuf(int dmabuf_fd, void *dmabuf_virt, size_t size);
 
 int sync_dmabuf_write_start(int dmabuf_fd);
 

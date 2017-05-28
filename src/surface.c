@@ -36,6 +36,40 @@ static uint32_t get_unused_surface_id(void)
     return id;
 }
 
+static struct drm_tegra_bo *alloc_plane(struct drm_tegra *drm, void **map,
+                                        int *dmabuf_fd, int size)
+{
+    struct drm_tegra_bo *bo;
+    uint32_t fd;
+    int ret;
+
+    ret = drm_tegra_bo_new(&bo, drm, 0, size);
+
+    if (ret < 0) {
+        return NULL;
+    }
+
+    if (map) {
+        ret = drm_tegra_bo_map(bo, map);
+
+        if (ret < 0) {
+            drm_tegra_bo_unref(bo);
+            return NULL;
+        }
+    }
+
+    ret = drm_tegra_bo_to_dmabuf(bo, &fd);
+
+    if (ret < 0) {
+        drm_tegra_bo_unref(bo);
+        return NULL;
+    }
+
+    *dmabuf_fd = fd;
+
+    return bo;
+}
+
 uint32_t create_surface(tegra_device *dev,
                         uint32_t width,
                         uint32_t height,
@@ -92,30 +126,31 @@ uint32_t create_surface(tegra_device *dev,
 
         assert(dev != NULL);
 
-        frame->y_fd = alloc_dmabuf(dev->vde_fd, &surf->y_data,
-                                   width * height);
+        surf->y_bo = alloc_plane(dev->drm, &surf->y_data, &frame->y_fd,
+                                 width * height);
 
-        if (frame->y_fd < 0) {
+        if (surf->y_bo == NULL) {
             goto err_cleanup;
         }
 
-        frame->cb_fd = alloc_dmabuf(dev->vde_fd, &surf->cb_data,
-                                    width * height / 4);
+        surf->cb_bo = alloc_plane(dev->drm, &surf->cb_data, &frame->cb_fd,
+                                  width * height / 4);
 
-        if (frame->cb_fd < 0) {
+        if (surf->cb_bo == NULL) {
             goto err_cleanup;
         }
 
-        frame->cr_fd = alloc_dmabuf(dev->vde_fd, &surf->cr_data,
-                                    width * height / 4);
+        surf->cr_bo = alloc_plane(dev->drm, &surf->cr_data, &frame->cr_fd,
+                                  width * height / 4);
 
-        if (frame->cr_fd < 0) {
+        if (surf->cr_bo == NULL) {
             goto err_cleanup;
         }
 
-        frame->aux_fd = alloc_dmabuf(dev->vde_fd, NULL, width * height / 4);
+        surf->aux_bo = alloc_plane(dev->drm, NULL, &frame->aux_fd,
+                                   width * height / 4);
 
-        if (frame->aux_fd < 0) {
+        if (surf->aux_bo == NULL) {
             goto err_cleanup;
         }
 
@@ -170,10 +205,10 @@ err_cleanup:
     }
 
     if (frame != NULL) {
-        free_dmabuf(frame->y_fd,  surf->y_data,  width * height);
-        free_dmabuf(frame->cb_fd, surf->cb_data, width * height / 4);
-        free_dmabuf(frame->cr_fd, surf->cr_data, width * height / 4);
-        free_dmabuf(frame->aux_fd, NULL, width * height / 4);
+        drm_tegra_bo_unref(surf->y_bo);
+        drm_tegra_bo_unref(surf->cb_bo);
+        drm_tegra_bo_unref(surf->cr_bo);
+        drm_tegra_bo_unref(surf->aux_bo);
     }
 
     if (xrgb_data != data) {
@@ -189,17 +224,13 @@ err_cleanup:
 
 VdpStatus destroy_surface(tegra_surface *surf)
 {
-    int width, height;
     pixman_bool_t ret;
 
     if (surf->frame != NULL) {
-        width = pixman_image_get_width(surf->pix);
-        height = pixman_image_get_height(surf->pix);
-
-        free_dmabuf(surf->frame->y_fd,  surf->y_data,  width * height);
-        free_dmabuf(surf->frame->cb_fd, surf->cb_data, width * height / 4);
-        free_dmabuf(surf->frame->cr_fd, surf->cr_data, width * height / 4);
-        free_dmabuf(surf->frame->aux_fd, NULL, width * height / 4);
+        drm_tegra_bo_unref(surf->y_bo);
+        drm_tegra_bo_unref(surf->cb_bo);
+        drm_tegra_bo_unref(surf->cr_bo);
+        drm_tegra_bo_unref(surf->aux_bo);
     }
 
     ret = pixman_image_unref(surf->pix);

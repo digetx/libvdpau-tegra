@@ -378,7 +378,9 @@ VdpStatus vdp_device_destroy(VdpDevice device)
 
     tegra_devices[device] = NULL;
 
+    drm_tegra_close(dev->drm);
     close(dev->vde_fd);
+    close(dev->drm_fd);
     free(dev);
 
     return VDP_STATUS_OK;
@@ -389,12 +391,27 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
                                              VdpDevice *device,
                                              VdpGetProcAddress **get_proc_address)
 {
-    int vde_fd  = open("/dev/tegra_vde", O_RDWR);
+    struct drm_tegra *drm = NULL;
     VdpDevice i;
+    int vde_fd = -1;
+    int drm_fd = -1;
+    int ret;
 
+    vde_fd = open("/dev/tegra_vde", O_RDWR);
     if (vde_fd < 0) {
         perror("Failed to open /dev/tegra_vde");
-        return VDP_STATUS_RESOURCES;
+        goto err_cleanup;
+    }
+
+    drm_fd = open("/dev/dri/card0", O_RDWR);
+    if (drm_fd < 0) {
+        perror("Failed to open /dev/dri/card0");
+        goto err_cleanup;
+    }
+
+    ret = drm_tegra_new(&drm, drm_fd);
+    if (ret < 0) {
+        goto err_cleanup;
     }
 
     pthread_mutex_lock(&global_lock);
@@ -409,15 +426,24 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     pthread_mutex_unlock(&global_lock);
 
     if (i == MAX_DEVICES_NB || tegra_devices[i] == NULL) {
-        return VDP_STATUS_RESOURCES;
+        goto err_cleanup;
     }
 
     tegra_devices[i]->display = display;
     tegra_devices[i]->screen = screen;
     tegra_devices[i]->vde_fd = vde_fd;
+    tegra_devices[i]->drm_fd = drm_fd;
+    tegra_devices[i]->drm = drm;
 
     *device = i;
     *get_proc_address = vdp_get_proc_address;
 
     return VDP_STATUS_OK;
+
+err_cleanup:
+    drm_tegra_close(drm);
+    close(drm_fd);
+    close(vde_fd);
+
+    return VDP_STATUS_RESOURCES;
 }

@@ -81,10 +81,8 @@ struct tegra_vde_h264_decoder_ctx {
 #define VDE_IOW(nr,type)		_IOW(VDE_IOCTL_BASE,nr,type)
 #define VDE_IOWR(nr,type)		_IOWR(VDE_IOCTL_BASE,nr,type)
 
-#define TEGRA_VDE_ALLOC_DMA_BUF		0x00
 #define TEGRA_VDE_DECODE_H264		0x01
 
-#define TEGRA_VDE_IOCTL_ALLOC_DMA_BUF	VDE_IO(VDE_IOCTL_BASE + TEGRA_VDE_ALLOC_DMA_BUF)
 #define TEGRA_VDE_IOCTL_DECODE_H264	VDE_IOW(VDE_IOCTL_BASE + TEGRA_VDE_DECODE_H264, struct tegra_vde_h264_decoder_ctx)
 
 #if defined(__cplusplus)

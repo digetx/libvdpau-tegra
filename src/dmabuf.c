@@ -19,48 +19,6 @@
 
 #include "vdpau_tegra.h"
 
-int alloc_dmabuf(int dev_fd, void **dmabuf_virt, size_t size)
-{
-    int dmabuf_fd = ioctl(dev_fd, TEGRA_VDE_IOCTL_ALLOC_DMA_BUF, size);
-
-    assert(dmabuf_fd >= 0);
-
-    if (dmabuf_fd < 0) {
-        perror("DMABUF allocation from VDE failed");
-        return dmabuf_fd;
-    }
-
-    if (dmabuf_virt == NULL) {
-        return dmabuf_fd;
-    }
-
-    *dmabuf_virt = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
-                        dmabuf_fd, 0);
-
-    assert(*dmabuf_virt != MAP_FAILED);
-
-    if (*dmabuf_virt == MAP_FAILED) {
-        *dmabuf_virt = NULL;
-    }
-
-    return dmabuf_fd;
-}
-
-void free_dmabuf(int dmabuf_fd, void *dmabuf_virt, size_t size)
-{
-    int ret;
-
-    if (dmabuf_virt != NULL) {
-        ret = munmap(dmabuf_virt, size);
-        assert(ret == 0);
-    }
-
-    if (dmabuf_fd >= 0) {
-        ret = close(dmabuf_fd);
-        assert(ret == 0);
-    }
-}
-
 int sync_dmabuf_write_start(int dmabuf_fd)
 {
     struct dma_buf_sync sync = {

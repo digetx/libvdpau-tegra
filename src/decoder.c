@@ -388,6 +388,38 @@ VdpStatus vdp_decoder_query_capabilities(VdpDevice device,
     return VDP_STATUS_OK;
 }
 
+static struct drm_tegra_bo *alloc_data(struct drm_tegra *drm, void **map,
+                                       int *dmabuf_fd, uint32_t size)
+{
+    struct drm_tegra_bo *bo;
+    uint32_t fd;
+    int ret;
+
+    ret = drm_tegra_bo_new(&bo, drm, 0, size);
+
+    if (ret < 0) {
+        return NULL;
+    }
+
+    ret = drm_tegra_bo_map(bo, map);
+
+    if (ret < 0) {
+        drm_tegra_bo_unref(bo);
+        return NULL;
+    }
+
+    ret = drm_tegra_bo_to_dmabuf(bo, &fd);
+
+    if (ret < 0) {
+        drm_tegra_bo_unref(bo);
+        return NULL;
+    }
+
+    *dmabuf_fd = fd;
+
+    return bo;
+}
+
 VdpStatus vdp_decoder_create(VdpDevice device,
                              VdpDecoderProfile profile,
                              uint32_t width, uint32_t height,
@@ -433,9 +465,9 @@ VdpStatus vdp_decoder_create(VdpDevice device,
         return VDP_STATUS_RESOURCES;
     }
 
-    dmabuf_fd = alloc_dmabuf(dev->vde_fd, &dec->bitstream_data,
-                             MAX_BITSTREAM_SIZE);
-    if (dmabuf_fd < 0) {
+    dec->bitstream_bo = alloc_data(dev->drm, &dec->bitstream_data,
+                                   &dmabuf_fd, MAX_BITSTREAM_SIZE);
+    if (dec->bitstream_bo == NULL) {
         vdp_decoder_destroy(i);
         return VDP_STATUS_RESOURCES;
     }
@@ -461,8 +493,7 @@ VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
 
     set_decoder(decoder, NULL);
 
-    free_dmabuf(dec->bitstream_data_fd, dec->bitstream_data,
-                MAX_BITSTREAM_SIZE);
+    drm_tegra_bo_unref(dec->bitstream_bo);
     free(dec);
 
     return VDP_STATUS_OK;
