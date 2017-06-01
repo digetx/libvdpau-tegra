@@ -55,7 +55,6 @@ VdpStatus vdp_bitmap_surface_create(VdpDevice device,
                                     VdpBitmapSurface *surface)
 {
     tegra_device *dev = get_device(device);
-    pixman_format_code_t pfmt;
 
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -63,16 +62,13 @@ VdpStatus vdp_bitmap_surface_create(VdpDevice device,
 
     switch (rgba_format) {
     case VDP_RGBA_FORMAT_R8G8B8A8:
-        pfmt = PIXMAN_a8r8g8b8;
-        break;
     case VDP_RGBA_FORMAT_B8G8R8A8:
-        pfmt = PIXMAN_a8b8g8r8;
         break;
     default:
         return VDP_STATUS_INVALID_RGBA_FORMAT;
     }
 
-    *surface = create_surface(NULL, width, height, pfmt, 0, 0);
+    *surface = create_surface(dev, width, height, rgba_format, 0, 0);
 
     if (*surface == VDP_INVALID_HANDLE) {
         return VDP_STATUS_RESOURCES;
@@ -84,17 +80,14 @@ VdpStatus vdp_bitmap_surface_create(VdpDevice device,
 VdpStatus vdp_bitmap_surface_destroy(VdpBitmapSurface surface)
 {
     tegra_surface *surf = get_surface(surface);
-    VdpStatus ret;
 
     if (surf == NULL) {
         return VDP_INVALID_HANDLE;
     }
 
-    ret = destroy_surface(surf);
-
     set_surface(surface, NULL);
 
-    return ret;
+    return destroy_surface(surf);
 }
 
 VdpStatus vdp_bitmap_surface_get_parameters(VdpBitmapSurface surface,
@@ -174,6 +167,8 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
                      width, height);
 
     assert(ret != 0);
+
+    host1x_pixelbuffer_check_guard(surf->pixbuf);
 
     return VDP_STATUS_OK;
 }

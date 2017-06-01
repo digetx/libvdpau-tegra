@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Dmitry Osipenko <digetx@gmail.com>
+ * Copyright (C) 2016-2017 Dmitry Osipenko <digetx@gmail.com>
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -33,46 +33,49 @@ extern "C" {
 #endif
 
 #define FLAG_IS_B_FRAME		(1 << 0)
-#define FLAG_IS_P_FRAME		(1 << 1)
-#define FLAG_IS_REFERENCE	(1 << 2)
-#define FLAG_IS_VALID		(1 << 7)
+#define FLAG_IS_REFERENCE	(1 << 1)
 
 struct tegra_vde_h264_frame {
-    __s32 y_fd;
-    __s32 cb_fd;
-    __s32 cr_fd;
-    __s32 aux_fd;
-    __u32 frame_num;
-    __u8  flags;
+	__s32 y_fd;
+	__s32 cb_fd;
+	__s32 cr_fd;
+	__s32 aux_fd;
+	__u32 y_offset;
+	__u32 cb_offset;
+	__u32 cr_offset;
+	__u32 aux_offset;
+	__u32 frame_num;
+	__u32 flags;
 } __attribute__((packed));
 
 struct tegra_vde_h264_decoder_ctx {
-    __s32 bitstream_data_fd;
+	__s32 bitstream_data_fd;
+	__u32 bitstream_data_offset;
 
-    __u8  dpb_frames_nb;
-    __u32 dpb_frames_ptr;
-    __u8  dpb_ref_frames_with_earlier_poc_nb;
+	__u32 dpb_frames_ptr;
+	__u8  dpb_frames_nb;
+	__u8  dpb_ref_frames_with_earlier_poc_nb;
 
-    // SPS
-    __u8  is_baseline_profile;
-    __u8  level_idc;
-    __u8  log2_max_pic_order_cnt_lsb;
-    __u8  log2_max_frame_num;
-    __u8  pic_order_cnt_type;
-    __u8  direct_8x8_inference_flag;
-    __u8  pic_width_in_mbs;
-    __u8  pic_height_in_mbs;
+	// SPS
+	__u8  is_baseline_profile;
+	__u8  level_idc;
+	__u8  log2_max_pic_order_cnt_lsb;
+	__u8  log2_max_frame_num;
+	__u8  pic_order_cnt_type;
+	__u8  direct_8x8_inference_flag;
+	__u8  pic_width_in_mbs;
+	__u8  pic_height_in_mbs;
 
-    // PPS
-    __u8  pic_init_qp;
-    __u8  deblocking_filter_control_present_flag;
-    __u8  constrained_intra_pred_flag;
-    __u8  chroma_qp_index_offset;
-    __u8  pic_order_present_flag;
+	// PPS
+	__u8  pic_init_qp;
+	__u8  deblocking_filter_control_present_flag;
+	__u8  constrained_intra_pred_flag;
+	__u8  chroma_qp_index_offset;
+	__u8  pic_order_present_flag;
 
-    // Slice header
-    __u8  num_ref_idx_l0_active_minus1;
-    __u8  num_ref_idx_l1_active_minus1;
+	// Slice header
+	__u8  num_ref_idx_l0_active_minus1;
+	__u8  num_ref_idx_l1_active_minus1;
 } __attribute__((packed));
 
 #define VDE_IOCTL_BASE			'v'

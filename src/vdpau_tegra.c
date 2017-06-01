@@ -31,7 +31,7 @@ static tegra_pq      * tegra_pqs[MAX_PRESENTATION_QUEUES_NB];
 tegra_device * get_device(VdpDevice device)
 {
     if (device >= MAX_DEVICES_NB ) {
-        fprintf(stderr, "%s: Invalid handle %u\n", __func__, device);
+        ErrorMsg("%s: Invalid handle %u\n", __func__, device);
         return NULL;
     }
 
@@ -225,27 +225,32 @@ VdpStatus vdp_generate_csc_matrix(VdpProcamp *procamp,
         return VDP_STATUS_INVALID_POINTER;
     }
 
-    // BT.601 table
     switch (standard) {
     case VDP_COLOR_STANDARD_ITUR_BT_601:
+        (*csc_matrix)[0][0] =  1.164f;
         (*csc_matrix)[0][1] =  0.000f;
-        (*csc_matrix)[0][2] =  1.403f;
+        (*csc_matrix)[0][2] =  1.596f;
 
-        (*csc_matrix)[1][1] = -0.344f;
-        (*csc_matrix)[1][2] = -0.714f;
+        (*csc_matrix)[1][0] =  1.164f;
+        (*csc_matrix)[1][1] = -0.392f;
+        (*csc_matrix)[1][2] = -0.813f;
 
-        (*csc_matrix)[2][1] =  1.773f;
+        (*csc_matrix)[2][0] =  1.164f;
+        (*csc_matrix)[2][1] =  2.017f;
         (*csc_matrix)[2][2] =  0.000f;
         break;
     case VDP_COLOR_STANDARD_ITUR_BT_709:
-        (*csc_matrix)[0][1] =  0.0000f;
-        (*csc_matrix)[0][2] =  1.5701f;
+        (*csc_matrix)[0][0] =  1.164f;
+        (*csc_matrix)[0][1] =  0.000f;
+        (*csc_matrix)[0][2] =  1.793f;
 
-        (*csc_matrix)[1][1] = -0.1870f;
-        (*csc_matrix)[1][2] = -0.4664f;
+        (*csc_matrix)[1][0] =  1.164f;
+        (*csc_matrix)[1][1] = -0.213f;
+        (*csc_matrix)[1][2] = -0.533f;
 
-        (*csc_matrix)[2][1] =  1.8556f;
-        (*csc_matrix)[2][2] =  0.0000f;
+        (*csc_matrix)[2][0] =  1.164f;
+        (*csc_matrix)[2][1] =  2.112f;
+        (*csc_matrix)[2][2] =  0.000f;
         break;
     default:
         abort();
@@ -268,9 +273,6 @@ VdpStatus vdp_generate_csc_matrix(VdpProcamp *procamp,
         (*csc_matrix)[i][0] = procamp->contrast;
         (*csc_matrix)[i][1] = u;
         (*csc_matrix)[i][2] = v;
-        (*csc_matrix)[i][3] = - (u + v) / 2;
-        (*csc_matrix)[i][3] += 0.5f - procamp->contrast / 2;
-        (*csc_matrix)[i][3] += procamp->brightness;
     }
 
     return VDP_STATUS_OK;
@@ -368,6 +370,28 @@ VdpStatus vdp_preemption_callback_register(VdpDevice device,
     return VDP_STATUS_OK;
 }
 
+void ref_device(tegra_device *dev)
+{
+    atomic_inc(&dev->refcnt);
+}
+
+VdpStatus unref_device(tegra_device *dev)
+{
+    if (!atomic_dec_and_test(&dev->refcnt))
+        return VDP_STATUS_OK;
+
+    XvUngrabPort(dev->display, dev->xv_port, CurrentTime);
+    tegra_stream_destroy(dev->stream);
+    drm_tegra_channel_close(dev->gr2d);
+    drm_tegra_close(dev->drm);
+    close(dev->vde_fd);
+    close(dev->drm_fd);
+    free(dev->stream);
+    free(dev);
+
+    return VDP_STATUS_OK;
+}
+
 VdpStatus vdp_device_destroy(VdpDevice device)
 {
     tegra_device *dev = get_device(device);
@@ -378,12 +402,7 @@ VdpStatus vdp_device_destroy(VdpDevice device)
 
     tegra_devices[device] = NULL;
 
-    drm_tegra_close(dev->drm);
-    close(dev->vde_fd);
-    close(dev->drm_fd);
-    free(dev);
-
-    return VDP_STATUS_OK;
+    return unref_device(dev);
 }
 
 EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
@@ -392,7 +411,14 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
                                              VdpGetProcAddress **get_proc_address)
 {
     struct drm_tegra *drm = NULL;
+    struct drm_tegra_channel *gr2d = NULL;
+    struct tegra_stream *stream = NULL;
+    XvAdaptorInfo *adaptor_info = NULL;
+    XvImageFormatValues *fmt;
     VdpDevice i;
+    unsigned int ver, rel, req, ev, err;
+    unsigned int num_adaptors;
+    int num_formats;
     int vde_fd = -1;
     int drm_fd = -1;
     int ret;
@@ -411,10 +437,74 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
 
     ret = drm_tegra_new(&drm, drm_fd);
     if (ret < 0) {
+        ErrorMsg("Tegra DRM not detected\n");
         goto err_cleanup;
     }
 
+    ret = drm_tegra_channel_open(&gr2d, drm, DRM_TEGRA_GR2D);
+    if (ret < 0) {
+        ErrorMsg("failed to open 2D channel: %d\n", ret);
+        goto err_cleanup;
+    }
+
+    stream = calloc(1, sizeof(*stream));
+    if (!stream) {
+        ErrorMsg("failed to allocate command stream\n");
+        goto err_cleanup;
+    }
+
+    ret = tegra_stream_create(drm, gr2d, stream, 0);
+    if (ret < 0) {
+        ErrorMsg("failed to create command stream: %d\n", ret);
+        goto err_cleanup;
+    }
+
+    ret = XvQueryExtension(display, &ver, &rel, &req, &ev, &err);
+    if (ret != Success) {
+        ErrorMsg("Xv is disabled in the Xorg driver\n");
+        goto err_cleanup;
+    }
+
+    ret = XvQueryAdaptors(display, DefaultRootWindow(display),
+                          &num_adaptors, &adaptor_info);
+    if (ret != Success) {
+        goto err_cleanup;
+    }
+
+    while (num_adaptors--) {
+        if (adaptor_info[num_adaptors].num_ports != 1)
+            continue;
+
+        if (!(adaptor_info[num_adaptors].type & XvImageMask))
+            continue;
+
+        fmt = XvListImageFormats(display, adaptor_info[num_adaptors].base_id,
+                                 &num_formats);
+
+        while (num_formats--) {
+            if (!strncmp(fmt[num_formats].guid, "PASSTHROUGH_YV12", 16) &&
+                    fmt[num_formats].id == FOURCC_PASSTHROUGH_YV12) {
+                goto xv_detected;
+            }
+        }
+
+        XFree(fmt);
+    }
+
+    ErrorMsg("Opentegra Xv undetected\n");
+
+    goto err_cleanup;
+
+xv_detected:
     pthread_mutex_lock(&global_lock);
+
+    XFree(fmt);
+
+    ret = XvGrabPort(display, adaptor_info[num_adaptors].base_id, CurrentTime);
+    if (ret != Success) {
+        ErrorMsg("Xv port is busy\n");
+        goto err_cleanup;
+    }
 
     for (i = 0; i < MAX_DEVICES_NB; i++) {
         if (tegra_devices[i] == NULL) {
@@ -429,21 +519,33 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
         goto err_cleanup;
     }
 
+    atomic_set(&tegra_devices[i]->refcnt, 1);
+    tegra_devices[i]->xv_port = adaptor_info[num_adaptors].base_id;
     tegra_devices[i]->display = display;
     tegra_devices[i]->screen = screen;
     tegra_devices[i]->vde_fd = vde_fd;
     tegra_devices[i]->drm_fd = drm_fd;
+    tegra_devices[i]->stream = stream;
+    tegra_devices[i]->gr2d = gr2d;
     tegra_devices[i]->drm = drm;
 
     *device = i;
     *get_proc_address = vdp_get_proc_address;
 
+    XvFreeAdaptorInfo(adaptor_info);
+
     return VDP_STATUS_OK;
 
 err_cleanup:
+    tegra_stream_destroy(stream);
+    drm_tegra_channel_close(gr2d);
     drm_tegra_close(drm);
     close(drm_fd);
     close(vde_fd);
+    free(stream);
+
+    if (adaptor_info)
+        XvFreeAdaptorInfo(adaptor_info);
 
     return VDP_STATUS_RESOURCES;
 }

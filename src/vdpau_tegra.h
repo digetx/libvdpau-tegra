@@ -30,7 +30,9 @@
 #include <limits.h>
 #include <math.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -40,13 +42,19 @@
 
 #include <pixman.h>
 #include <vdpau/vdpau_x11.h>
+
 #include <X11/Xutil.h>
+#include <X11/extensions/Xvlib.h>
 
 #include <libdrm/tegra_drm.h>
 #include <libdrm/tegra.h>
 #include <xf86drm.h>
 
+#include "atomic.h"
 #include "bitstream.h"
+#include "tegra_stream.h"
+#include "host1x.h"
+#include "util_double_list.h"
 #include "uapi/dma-buf.h"
 #include "uapi/tegra-vde.h"
 
@@ -58,26 +66,87 @@
 
 #define TEGRA_VDPAU_INTERFACE_VERSION 1
 
-#define MAX_DEVICES_NB                      32
-#define MAX_DECODERS_NB                     8
+#define MAX_DEVICES_NB                      1
+#define MAX_DECODERS_NB                     1
 #define MAX_MIXERS_NB                       16
 #define MAX_SURFACES_NB                     256
 #define MAX_PRESENTATION_QUEUE_TARGETS_NB   32
 #define MAX_PRESENTATION_QUEUES_NB          128
 
+#define SURFACE_VIDEO               (1 << 0)
+#define SURFACE_YUV_UNCONVERTED     (1 << 1)
+#define SURFACE_DATA_NEEDS_SYNC     (1 << 2)
+
+#define PASSTHROUGH_DATA_SIZE   36
+
+#define FOURCC_PASSTHROUGH_YV12     (('1' << 24) + ('2' << 16) + ('V' << 8) + 'Y')
+#define FOURCC_PASSTHROUGH_XRGB565  (('1' << 24) + ('B' << 16) + ('G' << 8) + 'R')
+#define FOURCC_PASSTHROUGH_XRGB8888 (('X' << 24) + ('B' << 16) + ('G' << 8) + 'R')
+#define FOURCC_PASSTHROUGH_XBGR8888 (('X' << 24) + ('R' << 16) + ('G' << 8) + 'B')
+
+#define __align_mask(value, mask)  (((value) + (mask)) & ~(mask))
+#define ALIGN(value, alignment)    __align_mask(value, (typeof(value))((alignment) - 1))
+
+#define ErrorMsg(fmt, args...) \
+    fprintf(stderr, "%s:%d/%s(): " fmt, \
+            __FILE__, __LINE__, __func__, ##args)
+
+typedef struct {
+    int atomic;
+} atomic_t;
+
 extern pthread_mutex_t global_lock;
 
 typedef struct tegra_device {
     struct drm_tegra *drm;
+    struct drm_tegra_channel *gr2d;
+    struct tegra_stream *stream;
     Display *display;
+    XvPortID xv_port;
+    atomic_t refcnt;
     int screen;
     int vde_fd;
     int drm_fd;
 } tegra_device;
 
+typedef struct tegra_surface {
+    tegra_device *dev;
+
+    struct tegra_vde_h264_frame *frame;
+    int32_t pic_order_cnt;
+
+    pixman_image_t *pix;
+    XvImage *xv_img;
+    uint32_t flags;
+
+    void *y_data;
+    void *cb_data;
+    void *cr_data;
+
+    struct host1x_pixelbuffer *pixbuf;
+    struct drm_tegra_bo *y_bo;
+    struct drm_tegra_bo *cb_bo;
+    struct drm_tegra_bo *cr_bo;
+    struct drm_tegra_bo *aux_bo;
+
+    uint32_t disp_width;
+    uint32_t disp_height;
+
+    VdpPresentationQueueStatus status;
+    VdpTime first_presentation_time;
+    VdpTime earliest_presentation_time;
+
+    atomic_t refcnt;
+    struct list_head list_item;
+    pthread_cond_t idle_cond;
+    pthread_mutex_t lock;
+
+    bool idle_hack;
+} tegra_surface;
+
 typedef struct tegra_decoder {
     struct drm_tegra_bo *bitstream_bo;
-    VdpDevice device;
+    tegra_device *dev;
     bitstream_reader reader;
     int bitstream_data_fd;
     void *bitstream_data;
@@ -88,44 +157,34 @@ typedef struct tegra_decoder {
 
 typedef struct tegra_mixer {
     VdpCSCMatrix csc_matrix;
+    VdpColor bg_color;
 } tegra_mixer;
 
 typedef struct tegra_pqt {
-    VdpDevice device;
+    tegra_device *dev;
+    tegra_surface *disp_surf;
     Drawable drawable;
     GC gc;
+    atomic_t refcnt;
 } tegra_pqt;
 
 typedef struct tegra_pq {
-    VdpPresentationQueueTarget presentation_queue_target;
+    tegra_pqt *pqt;
     VdpColor background_color;
+
+    struct list_head surf_list;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+    pthread_t disp_thread;
+    pthread_t x11_thread;
+    bool exit;
 } tegra_pq;
 
-#define SURFACE_VIDEO           (1 << 0)
-#define SURFACE_YUV_UNCONVERTED (1 << 1)
-#define SURFACE_DATA_NEEDS_SYNC (1 << 2)
-
-typedef struct tegra_surface {
-    struct tegra_vde_h264_frame *frame;
-    int32_t pic_order_cnt;
-
-    pixman_image_t *pix;
-    pixman_image_t *pix_disp;
-    XImage *img;
-    void *rawdata;
-    uint32_t flags;
-
-    void *y_data;
-    void *cb_data;
-    void *cr_data;
-
-    struct drm_tegra_bo *y_bo;
-    struct drm_tegra_bo *cb_bo;
-    struct drm_tegra_bo *cr_bo;
-    struct drm_tegra_bo *aux_bo;
-} tegra_surface;
-
 tegra_device * get_device(VdpDevice device);
+
+void ref_device(tegra_device *dev);
+
+VdpStatus unref_device(tegra_device *dev);
 
 tegra_decoder * get_decoder(VdpDecoder decoder);
 
@@ -152,13 +211,15 @@ void set_presentation_queue(VdpPresentationQueue presentation_queue,
 uint32_t create_surface(tegra_device *dev,
                         uint32_t width,
                         uint32_t height,
-                        pixman_format_code_t pfmt,
+                        VdpRGBAFormat rgba_format,
                         int output,
                         int video);
 
 VdpStatus destroy_surface(tegra_surface *surf);
 
-int convert_video_surf(tegra_surface *surf, VdpCSCMatrix cscmat);
+void ref_surface(tegra_surface *surf);
+
+VdpStatus unref_surface(tegra_surface *surf);
 
 int sync_dmabuf_write_start(int dmabuf_fd);
 

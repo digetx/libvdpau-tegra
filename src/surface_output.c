@@ -90,7 +90,6 @@ VdpStatus vdp_output_surface_create(VdpDevice device,
                                     VdpOutputSurface *surface)
 {
     tegra_device *dev = get_device(device);
-    pixman_format_code_t pfmt;
 
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -98,16 +97,13 @@ VdpStatus vdp_output_surface_create(VdpDevice device,
 
     switch (rgba_format) {
     case VDP_RGBA_FORMAT_R8G8B8A8:
-        pfmt = PIXMAN_a8r8g8b8;
-        break;
     case VDP_RGBA_FORMAT_B8G8R8A8:
-        pfmt = PIXMAN_a8b8g8r8;
         break;
     default:
         return VDP_STATUS_INVALID_RGBA_FORMAT;
     }
 
-    *surface = create_surface(dev, width, height, pfmt, 1, 0);
+    *surface = create_surface(dev, width, height, rgba_format, 1, 0);
 
     if (*surface == VDP_INVALID_HANDLE) {
         return VDP_STATUS_RESOURCES;
@@ -211,7 +207,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     pixman_transform_t transform;
     void *dst_data;
     uint32_t src_width, src_height;
-    uint32_t src_x0, src_y0 ;
+    uint32_t src_x0, src_y0;
     uint32_t dst_width, dst_height;
     uint32_t dst_x0, dst_y0;
     int need_scale = 0;
@@ -221,6 +217,9 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     if (dst_surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
+
+    assert(dst_surf->idle_hack ||
+           dst_surf->status == VDP_PRESENTATION_QUEUE_STATUS_IDLE);
 
     src_surf = get_surface(source_surface);
 
@@ -245,6 +244,15 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     }
 
     if (source_surface == VDP_INVALID_HANDLE) {
+        ret = host1x_gr2d_clear_rect(dst_surf->dev->stream,
+                                     dst_surf->pixbuf,
+                                     0xFFFFFFFF,
+                                     dst_x0, dst_y0,
+                                     dst_width, dst_height);
+        if (ret == 0) {
+            return VDP_STATUS_OK;
+        }
+
         ret = pixman_fill(dst_data,
                           pixman_image_get_stride(dst_pix) / 4,
                           PIXMAN_FORMAT_BPP(pfmt),
@@ -296,6 +304,18 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
     if (dst_width != src_width || dst_height != src_height) {
         need_scale = 1;
+    }
+
+    if (!need_rotate) {
+        host1x_gr2d_surface_blit(dst_surf->dev->stream,
+                                 src_surf->pixbuf,
+                                 dst_surf->pixbuf,
+                                 NULL,
+                                 src_x0, src_y0,
+                                 src_width, src_height,
+                                 dst_x0, dst_y0,
+                                 dst_width, dst_height);
+        return VDP_STATUS_OK;
     }
 
     if (need_scale || need_rotate) {

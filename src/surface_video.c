@@ -102,11 +102,11 @@ VdpStatus vdp_video_surface_get_parameters(VdpVideoSurface surface,
     }
 
     if (width != NULL) {
-        *width = pixman_image_get_width(surf->pix);
+        *width = surf->pixbuf->width;
     }
 
     if (width != NULL) {
-        *height = pixman_image_get_height(surf->pix);
+        *height = surf->pixbuf->height;
     }
 
     return VDP_STATUS_OK;
@@ -144,12 +144,12 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
         return ret;
     }
 
-    width  = pixman_image_get_width(surf->pix);
-    height = pixman_image_get_height(surf->pix);
+    width  = surf->pixbuf->width;
+    height = surf->pixbuf->height;
 
     /* Copy luma plane.  */
     ret = pixman_blt(surf->y_data, dst_y,
-                     width / 4, destination_pitches[0] / 4,
+                     surf->pixbuf->pitch / 4, destination_pitches[0] / 4,
                      8, 8,
                      0, 0,
                      0, 0,
@@ -158,7 +158,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
 
     /* Copy chroma blue plane.  */
     ret = pixman_blt(surf->cb_data, dst_cb,
-                     width / 2 / 4, destination_pitches[1] / 4,
+                     surf->pixbuf->pitch_uv / 4, destination_pitches[1] / 4,
                      8, 8,
                      0, 0,
                      0, 0,
@@ -167,7 +167,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
 
     /* Copy chroma red plane.  */
     ret = pixman_blt(surf->cr_data, dst_cr,
-                     width / 2 / 4, destination_pitches[2] / 4,
+                     surf->pixbuf->pitch_uv / 4, destination_pitches[2] / 4,
                      8, 8,
                      0, 0,
                      0, 0,
@@ -217,12 +217,12 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
         return ret;
     }
 
-    width  = pixman_image_get_width(surf->pix);
-    height = pixman_image_get_height(surf->pix);
+    width  = surf->pixbuf->width;
+    height = surf->pixbuf->height;
 
     /* Copy luma plane.  */
     ret = pixman_blt(src_y, surf->y_data,
-                     source_pitches[0] / 4, width / 4,
+                     source_pitches[0] / 4, surf->pixbuf->pitch / 4,
                      8, 8,
                      0, 0,
                      0, 0,
@@ -231,7 +231,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
 
     /* Copy chroma blue plane.  */
     ret = pixman_blt(src_cb, surf->cb_data,
-                     source_pitches[1] / 4, width / 2 / 4,
+                     source_pitches[1] / 4, surf->pixbuf->pitch_uv / 4,
                      8, 8,
                      0, 0,
                      0, 0,
@@ -240,12 +240,14 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
 
     /* Copy chroma red plane.  */
     ret = pixman_blt(src_cr, surf->cr_data,
-                     source_pitches[2] / 4, width / 2 / 4,
+                     source_pitches[2] / 4, surf->pixbuf->pitch_uv / 4,
                      8, 8,
                      0, 0,
                      0, 0,
                      width / 2, height / 2);
     assert(ret != 0);
+
+    host1x_pixelbuffer_check_guard(surf->pixbuf);
 
     ret = sync_video_frame_dmabufs(surf, WRITE_END);
 

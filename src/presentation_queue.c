@@ -19,14 +19,225 @@
 
 #include "vdpau_tegra.h"
 
-static uint64_t get_time(void)
+static VdpTime get_time(void)
 {
     struct timespec tp;
 
     if (clock_gettime(CLOCK_MONOTONIC, &tp) == -1)
-        return 0;
+        abort();
 
-    return (uint64_t)tp.tv_sec * 1000000000ULL + (uint64_t)tp.tv_nsec;
+    return (VdpTime)tp.tv_sec * 1000000000ULL + (VdpTime)tp.tv_nsec;
+}
+
+static void * x11_thr(void *opaque)
+{
+    tegra_pq *pq = opaque;
+    tegra_pqt *pqt = pq->pqt;
+    tegra_device *dev = pqt->dev;
+    XEvent event;
+    int x = 0, y = 0, width = 0, height = 0;
+
+    while (true) {
+        if (!pq->exit &&
+            !XCheckWindowEvent(dev->display, pqt->drawable,
+                               StructureNotifyMask, &event)) {
+            usleep(100000);
+            continue;
+        }
+
+        if (pq->exit)
+            break;
+
+        switch (event.type) {
+        case ConfigureNotify:
+            if (x != event.xconfigure.x)
+                break;
+
+            if (y != event.xconfigure.y)
+                break;
+
+            if (width != event.xconfigure.width)
+                break;
+
+            if (height != event.xconfigure.height)
+                break;
+
+        default:
+            continue;
+        }
+
+        x = event.xconfigure.x;
+        y = event.xconfigure.y;
+        width = event.xconfigure.width;
+        height = event.xconfigure.height;
+
+        pthread_mutex_lock(&pq->lock);
+
+        if (pqt->disp_surf) {
+                XvPutImage(dev->display, dev->xv_port,
+                           pqt->drawable, pqt->gc,
+                           pqt->disp_surf->xv_img,
+                           0, 0,
+                           pqt->disp_surf->disp_width,
+                           pqt->disp_surf->disp_height,
+                           0, 0,
+                           pqt->disp_surf->disp_width,
+                           pqt->disp_surf->disp_height);
+
+                XSync(dev->display, 0);
+        }
+
+        pthread_mutex_unlock(&pq->lock);
+    }
+
+    return NULL;
+}
+
+static void pqt_display_surface_to_idle_state(tegra_pqt *pqt)
+{
+    if (!pqt->disp_surf) {
+        return;
+    }
+
+    pthread_mutex_lock(&pqt->disp_surf->lock);
+
+    pqt->disp_surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+    pthread_cond_signal(&pqt->disp_surf->idle_cond);
+
+    pthread_mutex_unlock(&pqt->disp_surf->lock);
+
+    unref_surface(pqt->disp_surf);
+
+    pqt->disp_surf = NULL;
+}
+
+static void * presentation_queue_thr(void *opaque)
+{
+    tegra_pq *pq = opaque;
+    tegra_pqt *pqt = pq->pqt;
+    tegra_device *dev = pqt->dev;
+    tegra_surface *surf, *tmp;
+    struct timespec tp;
+    VdpTime time = UINT64_MAX;
+    int ret;
+
+    while (true) {
+        pthread_mutex_lock(&pq->lock);
+
+        if (time == UINT64_MAX) {
+            clock_gettime(CLOCK_MONOTONIC, &tp);
+            tp.tv_sec += 9999999;
+        } else {
+            memset(&tp, 0, sizeof(tp));
+            tp.tv_sec = time / 1000000000ULL;
+            tp.tv_nsec = time - tp.tv_sec * 1000000000ULL;
+        }
+
+        ret = pthread_cond_timedwait(&pq->cond, &pq->lock, &tp);
+
+        if (pq->exit) {
+            LIST_FOR_EACH_ENTRY_SAFE(surf, tmp, &pq->surf_list, list_item) {
+                pthread_mutex_lock(&surf->lock);
+
+                surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+                surf->first_presentation_time = 0;
+                pthread_cond_signal(&surf->idle_cond);
+
+                LIST_DEL(&surf->list_item);
+                pthread_mutex_unlock(&surf->lock);
+
+                unref_surface(surf);
+            }
+
+            pqt_display_surface_to_idle_state(pqt);
+
+            pthread_mutex_unlock(&pq->lock);
+
+            return NULL;
+        }
+
+        if (ret == ETIMEDOUT) {
+            time = (VdpTime)tp.tv_sec * 1000000000ULL + (VdpTime)tp.tv_nsec;
+
+            LIST_FOR_EACH_ENTRY_SAFE(surf, tmp, &pq->surf_list, list_item) {
+                pthread_mutex_lock(&surf->lock);
+
+                if (surf->earliest_presentation_time > time) {
+                    pthread_mutex_unlock(&surf->lock);
+                    continue;
+                }
+
+                if (surf->earliest_presentation_time < time) {
+                    surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+                    surf->first_presentation_time = 0;
+                    pthread_cond_signal(&surf->idle_cond);
+
+                    goto del_surface;
+                }
+
+                XvPutImage(dev->display, dev->xv_port,
+                           pqt->drawable, pqt->gc,
+                           surf->xv_img,
+                           0, 0,
+                           surf->disp_width,
+                           surf->disp_height,
+                           0, 0,
+                           surf->disp_width,
+                           surf->disp_height);
+
+                XSync(dev->display, 0);
+
+                surf->first_presentation_time = get_time();
+                surf->status = VDP_PRESENTATION_QUEUE_STATUS_VISIBLE;
+
+                if (pqt->disp_surf != surf) {
+                    pqt_display_surface_to_idle_state(pqt);
+                    pqt->disp_surf = surf;
+                }
+
+                ref_surface(surf);
+del_surface:
+                LIST_DEL(&surf->list_item);
+                pthread_mutex_unlock(&surf->lock);
+                unref_surface(surf);
+            }
+        }
+
+        time = UINT64_MAX;
+
+        if (LIST_IS_EMPTY(&pq->surf_list)) {
+            pthread_mutex_unlock(&pq->lock);
+            continue;
+        }
+
+        LIST_FOR_EACH_ENTRY(surf, &pq->surf_list, list_item) {
+            pthread_mutex_lock(&surf->lock);
+
+            if (surf->earliest_presentation_time < time)
+                time = surf->earliest_presentation_time;
+
+            pthread_mutex_unlock(&surf->lock);
+        }
+
+        pthread_mutex_unlock(&pq->lock);
+    }
+
+    return NULL;
+}
+
+VdpStatus unref_queue_target(tegra_pqt *pqt)
+{
+    tegra_device *dev = pqt->dev;
+
+    if (!atomic_dec_and_test(&pqt->refcnt))
+        return VDP_STATUS_OK;
+
+    if (pqt->gc != None)
+        XFreeGC(dev->display, pqt->gc);
+
+    free(pqt);
+
+    return VDP_STATUS_OK;
 }
 
 VdpStatus vdp_presentation_queue_target_destroy(
@@ -40,9 +251,7 @@ VdpStatus vdp_presentation_queue_target_destroy(
 
     set_presentation_queue_target(presentation_queue_target, NULL);
 
-    free(pqt);
-
-    return VDP_STATUS_OK;
+    return unref_queue_target(pqt);
 }
 
 VdpStatus vdp_presentation_queue_create(
@@ -54,6 +263,9 @@ VdpStatus vdp_presentation_queue_create(
     tegra_pqt *pqt = get_presentation_queue_target(presentation_queue_target);
     tegra_pq *pq;
     VdpPresentationQueue i;
+    pthread_condattr_t cond_attrs;
+    pthread_attr_t thread_attrs;
+    int ret;
 
     if (dev == NULL || pqt == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -77,7 +289,57 @@ VdpStatus vdp_presentation_queue_create(
         return VDP_STATUS_RESOURCES;
     }
 
-    pq->presentation_queue_target = presentation_queue_target;
+    ret = pthread_mutex_init(&pq->lock, NULL);
+    if (ret != 0) {
+        ErrorMsg("pthread_mutex_init failed\n");
+        return VDP_STATUS_RESOURCES;
+    }
+
+    pthread_condattr_init(&cond_attrs);
+    pthread_condattr_setclock(&cond_attrs, CLOCK_MONOTONIC);
+
+    ret = pthread_cond_init(&pq->cond, &cond_attrs);
+    if (ret != 0) {
+        ErrorMsg("pthread_cond_init failed\n");
+        return VDP_STATUS_RESOURCES;
+    }
+
+    pthread_condattr_destroy(&cond_attrs);
+
+    LIST_INITHEAD(&pq->surf_list);
+    pq->pqt = pqt;
+
+    pthread_attr_init(&thread_attrs);
+    pthread_attr_setdetachstate(&thread_attrs, PTHREAD_CREATE_JOINABLE);
+
+    ret = pthread_create(&pq->disp_thread, &thread_attrs,
+                         presentation_queue_thr, pq);
+    if (ret != 0) {
+        ErrorMsg("pthread_create failed\n");
+        return VDP_STATUS_RESOURCES;
+    }
+
+    pthread_attr_destroy(&thread_attrs);
+
+    /*
+     * XXX: Unfortunately this doesn't work with MPlayer. Any player that
+     * doesn't invoke XInitThreads() may crash.
+     */
+    if (0) {
+        pthread_attr_init(&thread_attrs);
+        pthread_attr_setdetachstate(&thread_attrs, PTHREAD_CREATE_JOINABLE);
+
+        ret = pthread_create(&pq->x11_thread, &thread_attrs, x11_thr, pq);
+        if (ret != 0) {
+            ErrorMsg("pthread_create failed\n");
+            return VDP_STATUS_RESOURCES;
+        }
+
+        pthread_attr_destroy(&thread_attrs);
+    }
+
+    atomic_inc(&pqt->refcnt);
+    ref_device(dev);
 
     *presentation_queue = i;
 
@@ -88,13 +350,31 @@ VdpStatus vdp_presentation_queue_destroy(
                                         VdpPresentationQueue presentation_queue)
 {
     tegra_pq *pq = get_presentation_queue(presentation_queue);
+    tegra_pqt *pqt;
+    tegra_device *dev;
 
     if (pq == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    pqt = pq->pqt;
+    dev = pqt->dev;
+
     set_presentation_queue(presentation_queue, NULL);
 
+    pthread_mutex_lock(&pq->lock);
+
+    pq->exit = true;
+    pthread_cond_signal(&pq->cond);
+
+    pthread_mutex_unlock(&pq->lock);
+
+    if (0) {
+        pthread_join(pq->x11_thread, NULL);
+    }
+    pthread_join(pq->disp_thread, NULL);
+    unref_queue_target(pqt);
+    unref_device(dev);
     free(pq);
 
     return VDP_STATUS_OK;
@@ -152,44 +432,77 @@ VdpStatus vdp_presentation_queue_display(
     tegra_pq *pq = get_presentation_queue(presentation_queue);
     tegra_pqt *pqt;
     tegra_device *dev;
+    VdpTime time;
 
-    if (surf == NULL || pq == NULL) {
+    if (pq == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    pqt = get_presentation_queue_target(pq->presentation_queue_target);
+    pqt = pq->pqt;
+    dev = pqt->dev;
 
-    if (pqt == NULL) {
+    /* This will happen on surface allocation failure. */
+    if (surf == NULL) {
+        time = get_time();
+
+        if (earliest_presentation_time > time) {
+            usleep((earliest_presentation_time - time) / 1000);
+        }
+
+        pthread_mutex_lock(&pq->lock);
+
+        pqt_display_surface_to_idle_state(pqt);
+
+        pthread_cond_signal(&pq->cond);
+        pthread_mutex_unlock(&pq->lock);
+
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    dev = get_device(pqt->device);
+    pthread_mutex_lock(&pq->lock);
+    pthread_mutex_lock(&surf->lock);
 
-    if (dev == NULL) {
-        return VDP_STATUS_INVALID_HANDLE;
+    assert(surf->idle_hack ||
+           surf->status == VDP_PRESENTATION_QUEUE_STATUS_IDLE);
+
+    surf->disp_width  = clip_width  ?: surf->xv_img->width;
+    surf->disp_height = clip_height ?: surf->xv_img->height;
+    surf->idle_hack = false;
+
+    /* XXX: X11 app won't survive threading without XInitThreads() */
+    if (earliest_presentation_time == 0) {
+        XvPutImage(dev->display, dev->xv_port,
+                   pqt->drawable, pqt->gc,
+                   surf->xv_img,
+                   0, 0,
+                   surf->disp_width,
+                   surf->disp_height,
+                   0, 0,
+                   surf->disp_width,
+                   surf->disp_height);
+
+        XSync(dev->display, 0);
+
+        surf->status = VDP_PRESENTATION_QUEUE_STATUS_VISIBLE;
+        surf->first_presentation_time = get_time();
+        surf->idle_hack = true;
+
+        pthread_mutex_unlock(&surf->lock);
+        pthread_mutex_unlock(&pq->lock);
+
+        return VDP_STATUS_OK;
     }
 
-    assert(surf->img != NULL);
+    ref_surface(surf);
+    LIST_ADDTAIL(&surf->list_item, &pq->surf_list);
 
-    if (surf->pix_disp != NULL) {
-        /* Display uses other pixel format, conversion is required.  */
-        pixman_image_composite(PIXMAN_OP_SRC,
-                               surf->pix,
-                               NULL,
-                               surf->pix_disp,
-                               0, 0,
-                               0, 0,
-                               0, 0,
-                               clip_width, clip_height);
-    }
+    surf->status = VDP_PRESENTATION_QUEUE_STATUS_QUEUED;
+    surf->earliest_presentation_time = earliest_presentation_time;
 
-    XPutImage(dev->display, pqt->drawable, pqt->gc,
-              surf->img,
-              0, 0,
-              0, 0,
-              clip_width, clip_height);
+    pthread_mutex_unlock(&surf->lock);
 
-    XSync(dev->display, 0);
+    pthread_cond_signal(&pq->cond);
+    pthread_mutex_unlock(&pq->lock);
 
     return VDP_STATUS_OK;
 }
@@ -203,10 +516,22 @@ VdpStatus vdp_presentation_queue_block_until_surface_idle(
     tegra_pq *pq = get_presentation_queue(presentation_queue);
 
     if (surf == NULL || pq == NULL) {
+        *first_presentation_time = get_time();
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    *first_presentation_time = get_time();
+    ref_surface(surf);
+
+    pthread_mutex_lock(&surf->lock);
+
+    if (!surf->idle_hack && surf->status != VDP_PRESENTATION_QUEUE_STATUS_IDLE)
+        pthread_cond_wait(&surf->idle_cond, &surf->lock);
+
+    *first_presentation_time = surf->first_presentation_time;
+
+    pthread_mutex_unlock(&surf->lock);
+
+    unref_surface(surf);
 
     return VDP_STATUS_OK;
 }
@@ -221,11 +546,12 @@ VdpStatus vdp_presentation_queue_query_surface_status(
     tegra_pq *pq = get_presentation_queue(presentation_queue);
 
     if (surf == NULL || pq == NULL) {
+        *first_presentation_time = get_time();
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    *status = VDP_PRESENTATION_QUEUE_STATUS_VISIBLE;
-    *first_presentation_time = get_time();
+    *status = surf->status;
+    *first_presentation_time = surf->first_presentation_time;
 
     return VDP_STATUS_OK;
 }
@@ -243,11 +569,6 @@ VdpStatus vdp_presentation_queue_target_create_x11(
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
-
-    XSetWindowBackground(dev->display, drawable,
-                         BlackPixel(dev->display, dev->screen));
-    XClearWindow(dev->display, drawable);
-    XSync(dev->display, 0);
 
     pthread_mutex_lock(&global_lock);
 
@@ -267,7 +588,8 @@ VdpStatus vdp_presentation_queue_target_create_x11(
         return VDP_STATUS_RESOURCES;
     }
 
-    pqt->device = device;
+    atomic_set(&pqt->refcnt, 1);
+    pqt->dev = dev;
     pqt->drawable = drawable;
     pqt->gc = XCreateGC(dev->display, drawable, 0, &values);
 

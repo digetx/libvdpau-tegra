@@ -72,7 +72,7 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
             return VDP_STATUS_INVALID_STRUCT_VERSION;
         }
 
-        assert(bytes < MAX_BITSTREAM_SIZE);
+        assert(bytes <= MAX_BITSTREAM_SIZE);
 
         memcpy(bitstream, bufs[i].bitstream, bufs[i].bitstream_bytes);
 
@@ -289,7 +289,7 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
 {
     struct tegra_vde_h264_decoder_ctx ctx;
     struct tegra_vde_h264_frame dpb_frames[17];
-    tegra_device *dev = get_device(dec->device);
+    tegra_device *dev = dec->dev;
     int32_t max_frame_num               = 1 << (info->log2_max_frame_num_minus4 + 4);
     int32_t delim_pic_order_cnt         = INT32_MAX;
     int ref_frames_with_earlier_poc_num = 0;
@@ -303,7 +303,7 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     }
 
     if (info->entropy_coding_mode_flag) {
-        fprintf(stderr, "%s: CABAC decoding unimplemented\n", __func__);
+        ErrorMsg("CABAC decoding unimplemented\n");
         return VDP_STATUS_NO_IMPLEMENTATION;
     }
 
@@ -335,6 +335,7 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     }
 
     ctx.bitstream_data_fd                   = dec->bitstream_data_fd;
+    ctx.bitstream_data_offset               = 0;
     ctx.dpb_frames_nb                       = 1 + refs_num;
     ctx.dpb_frames_ptr                      = (uintptr_t) dpb_frames;
     ctx.dpb_ref_frames_with_earlier_poc_nb  = ref_frames_with_earlier_poc_num;
@@ -357,6 +358,8 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     if (ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264, &ctx) != 0) {
         return VDP_STATUS_ERROR;
     }
+
+    host1x_pixelbuffer_check_guard(surf->pixbuf);
 
     return VDP_STATUS_OK;
 }
@@ -442,6 +445,7 @@ VdpStatus vdp_decoder_create(VdpDevice device,
         is_baseline_profile = 1;
         break;
     case VDP_DECODER_PROFILE_H264_MAIN:
+    case VDP_DECODER_PROFILE_H264_HIGH: /* MPlayer compatibility */
         break;
     default:
         return VDP_STATUS_INVALID_DECODER_PROFILE;
@@ -472,9 +476,9 @@ VdpStatus vdp_decoder_create(VdpDevice device,
         return VDP_STATUS_RESOURCES;
     }
 
-    dec->device = device;
-    dec->width = width;
-    dec->height = height;
+    dec->dev = dev;
+    dec->width = ALIGN(width, 16);
+    dec->height = ALIGN(height, 16);
     dec->bitstream_data_fd = dmabuf_fd;
     dec->is_baseline_profile = is_baseline_profile;
 
@@ -493,6 +497,7 @@ VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
 
     set_decoder(decoder, NULL);
 
+    close(dec->bitstream_data_fd);
     drm_tegra_bo_unref(dec->bitstream_bo);
     free(dec);
 
@@ -503,6 +508,12 @@ VdpStatus vdp_decoder_get_parameters(VdpDecoder decoder,
                                      VdpDecoderProfile *profile,
                                      uint32_t *width, uint32_t *height)
 {
+    if (width)
+        *width = ALIGN(*width, 16);
+
+    if (height)
+        *height = ALIGN(*height, 16);
+
     return VDP_STATUS_OK;
 }
 
@@ -527,8 +538,6 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
     }
 
     ret = tegra_decode_h264(dec, surf, picture_info);
-
-    assert(ret == VDP_STATUS_OK);
 
     if (ret != VDP_STATUS_OK) {
         return ret;

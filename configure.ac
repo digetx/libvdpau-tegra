@@ -33,6 +33,10 @@ PKG_CHECK_MODULES(DRM, [libdrm libdrm_tegra >= 2.4.81])
 AC_SUBST(DRM_CFLAGS)
 AC_SUBST(DRM_LIBS)
 
+PKG_CHECK_MODULES(XV, xv)
+AC_SUBST(XV_CFLAGS)
+AC_SUBST(XV_LIBS)
+
 # Checks for libraries.
 AC_CHECK_LIB([m], [sin])
 

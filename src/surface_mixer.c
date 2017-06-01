@@ -25,11 +25,11 @@ VdpStatus vdp_video_mixer_query_feature_support(VdpDevice device,
 {
     tegra_device *dev = get_device(device);
 
+    *is_supported = VDP_FALSE;
+
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
-
-    *is_supported = VDP_FALSE;
 
     return VDP_STATUS_OK;
 }
@@ -40,10 +40,6 @@ VdpStatus vdp_video_mixer_query_parameter_support(
                                             VdpBool *is_supported)
 {
     tegra_device *dev = get_device(device);
-
-    if (dev == NULL) {
-        return VDP_STATUS_INVALID_HANDLE;
-    }
 
     switch (parameter)
     {
@@ -58,6 +54,10 @@ VdpStatus vdp_video_mixer_query_parameter_support(
         break;
     }
 
+    if (dev == NULL) {
+        return VDP_STATUS_INVALID_HANDLE;
+    }
+
     return VDP_STATUS_OK;
 }
 
@@ -68,11 +68,20 @@ VdpStatus vdp_video_mixer_query_attribute_support(
 {
     tegra_device *dev = get_device(device);
 
+    switch (attribute) {
+    case VDP_VIDEO_MIXER_ATTRIBUTE_CSC_MATRIX:
+    case VDP_VIDEO_MIXER_ATTRIBUTE_BACKGROUND_COLOR:
+        *is_supported = VDP_TRUE;
+        break;
+
+    default:
+        *is_supported = VDP_FALSE;
+        break;
+    }
+
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
-
-    *is_supported = VDP_FALSE;
 
     return VDP_STATUS_OK;
 }
@@ -161,6 +170,22 @@ VdpStatus vdp_video_mixer_create(VdpDevice device,
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    while (parameter_count--) {
+        switch (parameters[parameter_count]) {
+        case VDP_VIDEO_MIXER_PARAMETER_CHROMA_TYPE:
+        {
+            const VdpChromaType *chromatype = parameter_values[parameter_count];
+
+            if (*chromatype != VDP_CHROMA_TYPE_420) {
+                return VDP_STATUS_ERROR;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
     pthread_mutex_lock(&global_lock);
 
     for (i = 0; i < MAX_MIXERS_NB; i++) {
@@ -196,7 +221,7 @@ VdpStatus vdp_video_mixer_set_feature_enables(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    return (feature_count == 0) ? VDP_STATUS_OK : VDP_STATUS_ERROR;
+    return VDP_STATUS_OK;
 }
 
 VdpStatus vdp_video_mixer_set_attribute_values(
@@ -206,6 +231,7 @@ VdpStatus vdp_video_mixer_set_attribute_values(
                                         void const *const *attribute_values)
 {
     tegra_mixer *mix = get_mixer(mixer);
+    const VdpColor *color;
 
     if (mix == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -216,6 +242,12 @@ VdpStatus vdp_video_mixer_set_attribute_values(
         case VDP_VIDEO_MIXER_ATTRIBUTE_CSC_MATRIX:
             memcpy(&mix->csc_matrix, attribute_values[count],
                    sizeof(VdpCSCMatrix));
+            break;
+
+        case VDP_VIDEO_MIXER_ATTRIBUTE_BACKGROUND_COLOR:
+            color = attribute_values[count];
+            mix->bg_color = *color;
+            break;
         }
     }
 
@@ -229,6 +261,10 @@ VdpStatus vdp_video_mixer_get_feature_support(
                                         VdpBool *feature_supports)
 {
     tegra_mixer *mix = get_mixer(mixer);
+
+    while (feature_count--) {
+        feature_supports[feature_count] = VDP_FALSE;
+    }
 
     if (mix == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -316,37 +352,102 @@ VdpStatus vdp_video_mixer_render(
 {
     tegra_surface *dest_surf = get_surface(destination_surface);
     tegra_mixer *mix = get_mixer(mixer);
-    tegra_surface *surf;
+    tegra_device *dev;
+    uint32_t vid_width, vid_height;
+    uint32_t vid_x0, vid_y0;
+    uint32_t bg_width, bg_height;
+    uint32_t bg_x0, bg_y0;
+    uint32_t bg_color;
+    bool draw_background = false;
 
     if (dest_surf == NULL || mix == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    vdp_output_surface_render_bitmap_surface(
-                                destination_surface,
-                                destination_rect,
-                                background_surface,
-                                background_source_rect,
-                                NULL,
-                                NULL,
-                                VDP_OUTPUT_SURFACE_RENDER_ROTATE_0);
+    dev = dest_surf->dev;
 
-    if (video_surface_current != VDP_INVALID_HANDLE) {
-        surf = get_surface(video_surface_current);
+    assert(dest_surf->idle_hack ||
+           dest_surf->status == VDP_PRESENTATION_QUEUE_STATUS_IDLE);
 
-        if (convert_video_surf(surf, mix->csc_matrix)) {
-            return VDP_STATUS_ERROR;
-        }
+    if (destination_video_rect != NULL) {
+        vid_width = destination_video_rect->x1 - destination_video_rect->x0;
+        vid_height = destination_video_rect->y1 - destination_video_rect->y0;
+        vid_x0 = destination_video_rect->x0;
+        vid_y0 = destination_video_rect->y0;
+    } else {
+        vid_width = dest_surf->pixbuf->width;
+        vid_height = dest_surf->pixbuf->height;
+        vid_x0 = 0;
+        vid_y0 = 0;
     }
 
-    vdp_output_surface_render_bitmap_surface(
-                                destination_surface,
-                                destination_video_rect,
-                                video_surface_current,
-                                video_source_rect,
-                                NULL,
-                                NULL,
-                                VDP_OUTPUT_SURFACE_RENDER_ROTATE_0);
+    if (background_source_rect != NULL) {
+        bg_width = background_source_rect->x1 - background_source_rect->x0;
+        bg_height = background_source_rect->y1 - background_source_rect->y0;
+        bg_x0 = background_source_rect->x0;
+        bg_y0 = background_source_rect->y0;
+    } else {
+        bg_width = dest_surf->pixbuf->width;
+        bg_height = dest_surf->pixbuf->height;
+        bg_x0 = 0;
+        bg_y0 = 0;
+    }
+
+    if (vid_height < bg_height)
+        draw_background = true;
+
+    if (vid_width < bg_width)
+        draw_background = true;
+
+    if (vid_y0 != bg_y0)
+        draw_background = true;
+
+    if (vid_x0 != bg_x0)
+        draw_background = true;
+
+    if (draw_background) {
+        bg_color = (int)(mix->bg_color.alpha * 255) << 24;
+
+        switch (dest_surf->pixbuf->format) {
+        case PIX_BUF_FMT_ARGB8888:
+            bg_color |= (int)(mix->bg_color.red * 255) << 16;
+            bg_color |= (int)(mix->bg_color.green * 255) << 8;
+            bg_color |= (int)(mix->bg_color.blue * 255) << 0;
+            break;
+
+        case PIX_BUF_FMT_ABGR8888:
+            bg_color |= (int)(mix->bg_color.blue * 255) << 16;
+            bg_color |= (int)(mix->bg_color.green * 255) << 8;
+            bg_color |= (int)(mix->bg_color.red * 255) << 0;
+            break;
+
+        default:
+            abort();
+        }
+
+        host1x_gr2d_clear_rect_clipped(dev->stream,
+                                       dest_surf->pixbuf,
+                                       bg_color,
+                                       bg_x0, bg_y0,
+                                       bg_width, bg_height,
+                                       vid_x0, vid_y0,
+                                       vid_x0 + vid_width,
+                                       vid_y0 + vid_height,
+                                       true);
+    }
+
+    host1x_gr2d_surface_blit(dev->stream,
+                             get_surface(video_surface_current)->pixbuf,
+                             dest_surf->pixbuf,
+                             mix->csc_matrix,
+                             video_source_rect->x0,
+                             video_source_rect->y0,
+                             video_source_rect->x1 - video_source_rect->x0,
+                             video_source_rect->y1 - video_source_rect->y0,
+                             vid_x0,
+                             vid_y0,
+                             vid_width,
+                             vid_height);
 
     while (layer_count--) {
         if (layers[layer_count].struct_version != VDP_LAYER_VERSION) {

@@ -36,56 +36,23 @@ static uint32_t get_unused_surface_id(void)
     return id;
 }
 
-static struct drm_tegra_bo *alloc_plane(struct drm_tegra *drm, void **map,
-                                        int *dmabuf_fd, int size)
-{
-    struct drm_tegra_bo *bo;
-    uint32_t fd;
-    int ret;
-
-    ret = drm_tegra_bo_new(&bo, drm, 0, size);
-
-    if (ret < 0) {
-        return NULL;
-    }
-
-    if (map) {
-        ret = drm_tegra_bo_map(bo, map);
-
-        if (ret < 0) {
-            drm_tegra_bo_unref(bo);
-            return NULL;
-        }
-    }
-
-    ret = drm_tegra_bo_to_dmabuf(bo, &fd);
-
-    if (ret < 0) {
-        drm_tegra_bo_unref(bo);
-        return NULL;
-    }
-
-    *dmabuf_fd = fd;
-
-    return bo;
-}
-
 uint32_t create_surface(tegra_device *dev,
                         uint32_t width,
                         uint32_t height,
-                        pixman_format_code_t pfmt,
+                        VdpRGBAFormat rgba_format,
                         int output,
                         int video)
 {
     tegra_surface *surf                 = calloc(1, sizeof(tegra_surface));
     pixman_image_t *pix                 = NULL;
-    pixman_image_t *pix_disp            = NULL;
-    XImage *img                         = NULL;
+    XvImage *xv_img                     = NULL;
     struct tegra_vde_h264_frame *frame  = NULL;
-    void *data                          = NULL;
-    void *xrgb_data                     = NULL;
+    struct host1x_pixelbuffer *pixbuf   = NULL;
     uint32_t surface_id                 = VDP_INVALID_HANDLE;
     uint32_t stride                     = width * 4;
+    uint32_t *bo_flinks                 = NULL;
+    uint32_t *pitches                   = NULL;
+    int ret;
 
     if (surf == NULL) {
         return VDP_INVALID_HANDLE;
@@ -105,16 +72,52 @@ uint32_t create_surface(tegra_device *dev,
         goto err_cleanup;
     }
 
-    xrgb_data = data = malloc(stride * height);
+    if (!video){
+        pixman_format_code_t pfmt;
+        enum pixel_format pixbuf_fmt;
+        void *data;
 
-    if (data == NULL) {
-        goto err_cleanup;
-    }
+        switch (rgba_format) {
+        case VDP_RGBA_FORMAT_R8G8B8A8:
+            pixbuf_fmt = PIX_BUF_FMT_ABGR8888;
+            pfmt = PIXMAN_a8b8g8r8;
+            break;
 
-    pix = pixman_image_create_bits_no_clear(pfmt, width, height, data, stride);
+        case VDP_RGBA_FORMAT_B8G8R8A8:
+            pixbuf_fmt = PIX_BUF_FMT_ARGB8888;
+            pfmt = PIXMAN_a8r8g8b8;
+            break;
 
-    if (pix == NULL) {
-        goto err_cleanup;
+        default:
+            goto err_cleanup;
+        }
+
+        pixbuf = host1x_pixelbuffer_create(dev->drm, width, height,
+                                           stride, 0,
+                                           pixbuf_fmt,
+                                           PIX_BUF_LAYOUT_LINEAR);
+        if (pixbuf == NULL) {
+            goto err_cleanup;
+        }
+
+        ret = drm_tegra_bo_map(pixbuf->bo, &data);
+
+        if (ret < 0) {
+            goto err_cleanup;
+        }
+
+        ret = drm_tegra_bo_forbid_caching(pixbuf->bo);
+
+        if (ret < 0) {
+            goto err_cleanup;
+        }
+
+        pix = pixman_image_create_bits_no_clear(pfmt, width, height,
+                                                data, stride);
+
+        if (pix == NULL) {
+            goto err_cleanup;
+        }
     }
 
     if (video) {
@@ -124,131 +127,226 @@ uint32_t create_surface(tegra_device *dev,
             goto err_cleanup;
         }
 
-        assert(dev != NULL);
+        frame->y_fd = -1;
+        frame->cb_fd = -1;
+        frame->cr_fd = -1;
+        frame->aux_fd = -1;
 
-        surf->y_bo = alloc_plane(dev->drm, &surf->y_data, &frame->y_fd,
-                                 width * height);
-
-        if (surf->y_bo == NULL) {
+        pixbuf = host1x_pixelbuffer_create(dev->drm,
+                                           width, ALIGN(height, 16),
+                                           ALIGN(width, 16),
+                                           ALIGN(width / 2, 8),
+                                           PIX_BUF_FMT_YV12,
+                                           PIX_BUF_LAYOUT_LINEAR);
+        if (pixbuf == NULL) {
             goto err_cleanup;
         }
 
-        surf->cb_bo = alloc_plane(dev->drm, &surf->cb_data, &frame->cb_fd,
-                                  width * height / 4);
+        surf->y_bo  = pixbuf->bos[0];
+        surf->cb_bo = pixbuf->bos[1];
+        surf->cr_bo = pixbuf->bos[2];
 
-        if (surf->cb_bo == NULL) {
+        /* luma plane */
+
+        ret = drm_tegra_bo_to_dmabuf(surf->y_bo, (uint32_t *) &frame->y_fd);
+
+        if (ret < 0) {
             goto err_cleanup;
         }
 
-        surf->cr_bo = alloc_plane(dev->drm, &surf->cr_data, &frame->cr_fd,
-                                  width * height / 4);
+        ret = drm_tegra_bo_map(surf->y_bo, &surf->y_data);
 
-        if (surf->cr_bo == NULL) {
+        if (ret < 0) {
             goto err_cleanup;
         }
 
-        surf->aux_bo = alloc_plane(dev->drm, NULL, &frame->aux_fd,
-                                   width * height / 4);
+        ret = drm_tegra_bo_forbid_caching(surf->y_bo);
 
-        if (surf->aux_bo == NULL) {
+        if (ret < 0) {
             goto err_cleanup;
         }
 
-        frame->flags = FLAG_IS_VALID;
+        /* blue plane */
+
+        ret = drm_tegra_bo_to_dmabuf(surf->cb_bo, (uint32_t *) &frame->cb_fd);
+
+        if (ret < 0) {
+            goto err_cleanup;
+        }
+
+        ret = drm_tegra_bo_map(surf->cb_bo, &surf->cb_data);
+
+        if (ret < 0) {
+            goto err_cleanup;
+        }
+
+        ret = drm_tegra_bo_forbid_caching(surf->cb_bo);
+
+        if (ret < 0) {
+            goto err_cleanup;
+        }
+
+        /* red plane */
+
+        ret = drm_tegra_bo_to_dmabuf(surf->cr_bo, (uint32_t *) &frame->cr_fd);
+
+        if (ret < 0) {
+            goto err_cleanup;
+        }
+
+        ret = drm_tegra_bo_map(surf->cr_bo, &surf->cr_data);
+
+        if (ret < 0) {
+            goto err_cleanup;
+        }
+
+        ret = drm_tegra_bo_forbid_caching(surf->cr_bo);
+
+        if (ret < 0) {
+            goto err_cleanup;
+        }
+
+        /* aux stuff */
+
+        ret = drm_tegra_bo_new(&surf->aux_bo, dev->drm, 0,
+                               ALIGN(width, 16) * ALIGN(height, 16) / 4);
+        if (ret < 0) {
+            goto err_cleanup;
+        }
+
+        ret = drm_tegra_bo_to_dmabuf(surf->aux_bo, (uint32_t *) &frame->aux_fd);
+
+        if (ret < 0) {
+            goto err_cleanup;
+        }
+
+        ret = drm_tegra_bo_forbid_caching(surf->aux_bo);
+
+        if (ret < 0) {
+            goto err_cleanup;
+        }
     }
 
     if (output) {
-        if (pfmt != PIXMAN_x8r8g8b8 && pfmt != PIXMAN_a8r8g8b8) {
-            xrgb_data = malloc(stride * height);
+        int format_id = -1;
 
-            pix_disp = pixman_image_create_bits_no_clear(
-                            PIXMAN_x8r8g8b8, width, height, xrgb_data, stride);
+        switch (rgba_format) {
+        case VDP_RGBA_FORMAT_R8G8B8A8:
+            format_id = FOURCC_PASSTHROUGH_XBGR8888;
+            break;
 
-            assert(pix_disp != NULL);
-
-            if (pix_disp == NULL) {
-                goto err_cleanup;
-            }
+        case VDP_RGBA_FORMAT_B8G8R8A8:
+            format_id = FOURCC_PASSTHROUGH_XRGB8888;
+            break;
         }
 
-        img = XCreateImage(dev->display, NULL, 24, ZPixmap, 0,
-                           xrgb_data,
-                           width, height,
-                           8,
-                           stride);
-
-        assert(img != NULL);
-
-        if (img == NULL) {
+        xv_img = XvCreateImage(dev->display, dev->xv_port,
+                               format_id, NULL, width, height);
+        if (xv_img == NULL) {
+            ErrorMsg("XvCreateImage failed\n");
             goto err_cleanup;
         }
+
+        assert(xv_img->data_size == PASSTHROUGH_DATA_SIZE);
+
+        xv_img->data = calloc(1, xv_img->data_size);
+
+        if (xv_img->data == NULL) {
+            goto err_cleanup;
+        }
+
+        bo_flinks = (uint32_t *) xv_img->data;
+
+        if (drm_tegra_bo_get_name(pixbuf->bo, &bo_flinks[0]) != 0) {
+            ErrorMsg("drm_tegra_bo_get_name failed\n");
+            goto err_cleanup;
+        }
+
+        pitches = (uint32_t *) (xv_img->data + 12);
+
+        pitches[0] = pixbuf->pitch;
     }
 
-    surf->rawdata = data;
+    ret = pthread_mutex_init(&surf->lock, NULL);
+    if (ret != 0) {
+        ErrorMsg("pthread_mutex_init failed\n");
+        goto err_cleanup;
+    }
+
+    ret = pthread_cond_init(&surf->idle_cond, NULL);
+    if (ret != 0) {
+        ErrorMsg("pthread_cond_init failed\n");
+        goto err_cleanup;
+    }
+
+    atomic_set(&surf->refcnt, 1);
+    surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
     surf->pix = pix;
-    surf->pix_disp = pix_disp;
-    surf->img = img;
+    surf->xv_img = xv_img;
     surf->frame = frame;
     surf->flags = video ? SURFACE_VIDEO : 0;
+    surf->pixbuf = pixbuf;
+    surf->dev = dev;
+
+    ref_device(dev);
 
     return surface_id;
 
 err_cleanup:
     set_surface(surface_id, NULL);
 
-    if (pix_disp != NULL && pix_disp != pix) {
-        pixman_image_unref(pix_disp);
+    if (xv_img != NULL) {
+        free(xv_img->data);
+        XFree(xv_img);
     }
 
     if (pix != NULL) {
         pixman_image_unref(pix);
     }
 
-    if (frame != NULL) {
-        drm_tegra_bo_unref(surf->y_bo);
-        drm_tegra_bo_unref(surf->cb_bo);
-        drm_tegra_bo_unref(surf->cr_bo);
-        drm_tegra_bo_unref(surf->aux_bo);
+    if (pixbuf!= NULL) {
+        host1x_pixelbuffer_free(pixbuf);
     }
 
-    if (xrgb_data != data) {
-        free(xrgb_data);
+    if (frame != NULL) {
+        drm_tegra_bo_unref(surf->aux_bo);
+        close(frame->y_fd);
+        close(frame->cb_fd);
+        close(frame->cr_fd);
+        close(frame->aux_fd);
     }
 
     free(frame);
-    free(data);
     free(surf);
 
     return VDP_INVALID_HANDLE;
 }
 
-VdpStatus destroy_surface(tegra_surface *surf)
+void ref_surface(tegra_surface *surf)
 {
-    pixman_bool_t ret;
+    atomic_inc(&surf->refcnt);
+}
+
+VdpStatus unref_surface(tegra_surface *surf)
+{
+    if (!atomic_dec_and_test(&surf->refcnt)) {
+        return VDP_STATUS_OK;
+    }
 
     if (surf->frame != NULL) {
-        drm_tegra_bo_unref(surf->y_bo);
-        drm_tegra_bo_unref(surf->cb_bo);
-        drm_tegra_bo_unref(surf->cr_bo);
         drm_tegra_bo_unref(surf->aux_bo);
+        close(surf->frame->y_fd);
+        close(surf->frame->cb_fd);
+        close(surf->frame->cr_fd);
+        close(surf->frame->aux_fd);
     }
 
-    ret = pixman_image_unref(surf->pix);
-
-    assert(ret != 0);
-
-    if (surf->img != NULL) {
-        XDestroyImage(surf->img);
+    if (surf->xv_img != NULL) {
+        free(surf->xv_img->data);
+        XFree(surf->xv_img);
     }
 
-    if (surf->pix_disp != NULL) {
-        ret = pixman_image_unref(surf->pix_disp);
-        assert(ret != 0);
-    }
-
-    if (surf->pix_disp != NULL) {
-        free(surf->rawdata);
-    }
+    unref_device(surf->dev);
 
     free(surf->frame);
     free(surf);
@@ -256,53 +354,25 @@ VdpStatus destroy_surface(tegra_surface *surf)
     return VDP_STATUS_OK;
 }
 
-static void convert_yv12_to_xrgb(uint8_t *restrict src_y_,
-                                 uint8_t *restrict src_cb,
-                                 uint8_t *restrict src_cr,
-                                 uint8_t *restrict dest_xrgb,
-                                 int width, int height,
-                                 VdpCSCMatrix cscmat)
+VdpStatus destroy_surface(tegra_surface *surf)
 {
-    float red, green, blue;
-    int y_, cb, cr;
-    int p_y, p_c;
-    int cx, cy;
-    int x, y;
+    pthread_mutex_lock(&surf->lock);
 
-#define _X  3
-#define _R  2
-#define _G  1
-#define _B  0
+    surf->earliest_presentation_time = 0;
 
-#define _MAX(x, y) (((x) > (y)) ? (x) : (y))
-#define _MIN(x, y) (((x) < (y)) ? (x) : (y))
-#define _CLAMP(c) (_MIN(255, _MAX(c, 0)))
-
-    for (cy = 0, y = 0; y < height; y++) {
-        cy = y / 2;
-
-        for (x = 0; x < width; x++) {
-            cx = x / 2;
-
-            p_y = x + width * y;
-            p_c = cx + width / 2 * cy;
-
-            y_ = src_y_[p_y];
-            cb = src_cb[p_c] - 128;
-            cr = src_cr[p_c] - 128;
-
-            red   = y_ + cscmat[0][1] * cb + cscmat[0][2] * cr;
-            green = y_ + cscmat[1][1] * cb + cscmat[1][2] * cr;
-            blue  = y_ + cscmat[2][1] * cb + cscmat[2][2] * cr;
-
-            dest_xrgb[_R] = _CLAMP(red);
-            dest_xrgb[_G] = _CLAMP(green);
-            dest_xrgb[_B] = _CLAMP(blue);
-            dest_xrgb[_X] = 255;
-
-            dest_xrgb += 4;
-        }
+    if (surf->pixbuf != NULL) {
+        host1x_pixelbuffer_free(surf->pixbuf);
+        surf->pixbuf = NULL;
     }
+
+    if (surf->pix != NULL) {
+        pixman_image_unref(surf->pix);
+        surf->pix = NULL;
+    }
+
+    pthread_mutex_unlock(&surf->lock);
+
+    return unref_surface(surf);
 }
 
 int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type)
@@ -385,44 +455,6 @@ int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type)
     if (ret) {
         return ret;
     }
-
-    return 0;
-}
-
-int convert_video_surf(tegra_surface *surf, VdpCSCMatrix cscmat)
-{
-    pixman_image_t *pix = surf->pix;
-    int ret;
-
-    if (!(surf->flags & SURFACE_VIDEO)) {
-        return 0;
-    }
-
-    if (!(surf->flags & SURFACE_YUV_UNCONVERTED)) {
-        return 0;
-    }
-
-    ret = sync_video_frame_dmabufs(surf, READ_START);
-
-    if (ret) {
-        return ret;
-    }
-
-    convert_yv12_to_xrgb(surf->y_data, surf->cb_data, surf->cr_data,
-                         (void *) pixman_image_get_data(pix),
-                         pixman_image_get_width(pix),
-                         pixman_image_get_height(pix),
-                         cscmat);
-
-    surf->flags &= ~SURFACE_YUV_UNCONVERTED;
-
-    ret = sync_video_frame_dmabufs(surf, READ_END);
-
-    if (ret) {
-        return ret;
-    }
-
-    surf->flags &= ~SURFACE_DATA_NEEDS_SYNC;
 
     return 0;
 }
