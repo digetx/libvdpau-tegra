@@ -17,7 +17,8 @@ libvdpau_tegra_la_SOURCES = vdpau_tegra.c \
                             bitstream.c \
                             host1x-gr2d.c \
                             host1x-pixelbuffer.c \
-                            tegra_stream.c
+                            tegra_stream.c \
+                            dri2.c
 
 libvdpau_tegra_la_LDFLAGS = -version-info 1:0:0 -module -Wl,-z,defs
 libvdpau_tegra_la_LIBADD  = -lm $(X11_LIBS) $(PIXMAN_LIBS) $(DRM_LIBS) $(XV_LIBS)

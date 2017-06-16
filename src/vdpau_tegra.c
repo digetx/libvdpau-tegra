@@ -416,6 +416,7 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     XvAdaptorInfo *adaptor_info = NULL;
     XvImageFormatValues *fmt;
     VdpDevice i;
+    drm_magic_t magic;
     unsigned int ver, rel, req, ev, err;
     unsigned int num_adaptors;
     int num_formats;
@@ -432,6 +433,16 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     drm_fd = open("/dev/dri/card0", O_RDWR);
     if (drm_fd < 0) {
         perror("Failed to open /dev/dri/card0");
+        goto err_cleanup;
+    }
+
+    if (drmGetMagic(drm_fd, &magic)) {
+        ErrorMsg("drmGetMagic failed");
+        goto err_cleanup;
+    }
+
+    if (!DRI2Authenticate(display, DefaultRootWindow(display), magic)) {
+        ErrorMsg("DRI2Authenticate failed");
         goto err_cleanup;
     }
 

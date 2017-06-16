@@ -43,14 +43,24 @@
 #include <pixman.h>
 #include <vdpau/vdpau_x11.h>
 
-#include <X11/Xutil.h>
-#include <X11/extensions/Xvlib.h>
-
 #include <libdrm/tegra_drm.h>
 #include <libdrm/tegra.h>
 #include <xf86drm.h>
 
+#define NEED_REPLIES
+#include <X11/Xlibint.h>
+#include <X11/Xmd.h>
+#include <X11/Xproto.h>
+#include <X11/Xutil.h>
+#include <X11/extensions/extutil.h>
+#include <X11/extensions/dri2proto.h>
+#include <X11/extensions/dri2tokens.h>
+#include <X11/extensions/Xext.h>
+#include <X11/extensions/Xfixes.h>
+#include <X11/extensions/Xvlib.h>
+
 #include "atomic.h"
+#include "dri2.h"
 #include "bitstream.h"
 #include "tegra_stream.h"
 #include "host1x.h"
