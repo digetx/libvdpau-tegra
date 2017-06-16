@@ -8,7 +8,7 @@ supports CAVLC H.264 only.
 * libvdpau
 * pixman (http://www.pixman.org)
 * linux kernel Video Decoder Engine (VDE) driver (https://github.com/digetx/picasso_upstream_support/tree/tegra-drm-fixes-and-vde)
-* libxv
+* libX11 libXext xextproto libXfixes libxv
 * libdrm-tegra (https://github.com/grate-driver/libdrm)
 * opentegra (https://github.com/grate-driver/xf86-video-opentegra)
 
