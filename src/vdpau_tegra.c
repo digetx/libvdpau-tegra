@@ -424,12 +424,6 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     int drm_fd = -1;
     int ret;
 
-    vde_fd = open("/dev/tegra_vde", O_RDWR);
-    if (vde_fd < 0) {
-        perror("Failed to open /dev/tegra_vde");
-        goto err_cleanup;
-    }
-
     drm_fd = open("/dev/dri/card0", O_RDWR);
     if (drm_fd < 0) {
         perror("Failed to open /dev/dri/card0");
@@ -552,7 +546,6 @@ err_cleanup:
     drm_tegra_channel_close(gr2d);
     drm_tegra_close(drm);
     close(drm_fd);
-    close(vde_fd);
     free(stream);
 
     if (adaptor_info)

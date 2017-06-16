@@ -307,6 +307,14 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
         return VDP_STATUS_NO_IMPLEMENTATION;
     }
 
+    if (dev->vde_fd < 0) {
+        dev->vde_fd = open("/dev/tegra_vde", O_RDWR);
+        if (dev->vde_fd < 0) {
+            perror("Failed to open /dev/tegra_vde");
+            return VDP_STATUS_RESOURCES;
+        }
+    }
+
     surf->frame->frame_num = info->frame_num;
     surf->pic_order_cnt    = info->field_order_cnt[0];
     surf->frame->flags    &= ~FLAG_IS_B_FRAME;
