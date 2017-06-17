@@ -341,11 +341,6 @@ VdpStatus unref_surface(tegra_surface *surf)
         close(surf->frame->aux_fd);
     }
 
-    if (surf->xv_img != NULL) {
-        free(surf->xv_img->data);
-        XFree(surf->xv_img);
-    }
-
     unref_device(surf->dev);
 
     free(surf->frame);
@@ -368,6 +363,12 @@ VdpStatus destroy_surface(tegra_surface *surf)
     if (surf->pix != NULL) {
         pixman_image_unref(surf->pix);
         surf->pix = NULL;
+    }
+
+    if (surf->xv_img != NULL) {
+        free(surf->xv_img->data);
+        XFree(surf->xv_img);
+        surf->xv_img = NULL;
     }
 
     pthread_mutex_unlock(&surf->lock);
