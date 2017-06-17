@@ -205,18 +205,9 @@ del_surface:
 
         time = UINT64_MAX;
 
-        if (LIST_IS_EMPTY(&pq->surf_list)) {
-            pthread_mutex_unlock(&pq->lock);
-            continue;
-        }
-
         LIST_FOR_EACH_ENTRY(surf, &pq->surf_list, list_item) {
-            pthread_mutex_lock(&surf->lock);
-
             if (surf->earliest_presentation_time < time)
                 time = surf->earliest_presentation_time;
-
-            pthread_mutex_unlock(&surf->lock);
         }
 
         pthread_mutex_unlock(&pq->lock);
