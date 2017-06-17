@@ -1,6 +1,6 @@
 # About
 
-This is a VDPAU backend driver for the NVIDIA Tegra 20 SoC's. Currently
+This is a VDPAU backend driver for the NVIDIA Tegra20 SoC's. Currently
 supports CAVLC H.264 only.
 
 # Requirements:
@@ -12,7 +12,7 @@ supports CAVLC H.264 only.
 * libdrm-tegra (https://github.com/grate-driver/libdrm)
 * opentegra (https://github.com/grate-driver/xf86-video-opentegra)
 
-The VDE linux kernel driver is optional, it is required for HW accelerated video decoding. The accelerated video output work without it.
+The VDE linux kernel driver is optional, it is required for HW accelerated video decoding. The accelerated video output works without it.
 
 # Installation:
 ```
@@ -27,7 +27,7 @@ $ make install
 $ VDPAU_DRIVER=tegra VDPAU_DRIVER_PATH=/path/to/libvdpau_tegra.so mpv --hwdec=vdpau --vo=vdpau video.mp4
 ```
 
-Other players that support VDPAU are also (kinda) working, but mpv is recommended. The `VDPAU_DRIVER_PATH` isn't required if mesa (https://github.com/grate-driver/mesa) is installed.
+Other players that support VDPAU are also (kinda) working, but mpv is recommended. The `VDPAU_DRIVER` and `VDPAU_DRIVER_PATH` aren't required if mesa (https://github.com/grate-driver/mesa) is installed.
 
 # Todo:
 
