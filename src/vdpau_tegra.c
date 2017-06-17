@@ -424,9 +424,9 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     int drm_fd = -1;
     int ret;
 
-    drm_fd = open("/dev/dri/card0", O_RDWR);
+    drm_fd = drmOpen("tegra", NULL);
     if (drm_fd < 0) {
-        perror("Failed to open /dev/dri/card0");
+        perror("Failed to open tegra DRM");
         goto err_cleanup;
     }
 
