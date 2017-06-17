@@ -12,6 +12,8 @@ supports CAVLC H.264 only.
 * libdrm-tegra (https://github.com/grate-driver/libdrm)
 * opentegra (https://github.com/grate-driver/xf86-video-opentegra)
 
+The VDE linux kernel driver is optional, it is required for HW accelerated video decoding. The accelerated video output work without it.
+
 # Installation:
 ```
 $ sh autogen.sh
