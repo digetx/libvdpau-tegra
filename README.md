@@ -4,11 +4,15 @@ This is a VDPAU backend driver for the NVIDIA Tegra20 SoC's.
 
 # Requirements:
 
+Mandatory:
 * libvdpau
 * pixman (http://www.pixman.org)
 * libX11 libXext xextproto libXfixes libXv
 * libdrm-tegra (https://github.com/grate-driver/libdrm)
 * opentegra (https://github.com/grate-driver/xf86-video-opentegra)
+
+Optional:
+* mesa (https://github.com/grate-driver/mesa)
 * Linux kernel Video Decoder Engine (VDE) driver, cherry-pick these patches to your kernel 
 > https://github.com/digetx/picasso_upstream_support/commit/2b08ee544a5dd806697933e14c117e375ca29a2f
 > https://github.com/digetx/picasso_upstream_support/commit/7f2036f832364a202356cedc54b2c4cc5c1a434c
