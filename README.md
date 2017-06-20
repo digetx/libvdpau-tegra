@@ -16,6 +16,8 @@ This is a VDPAU backend driver for the NVIDIA Tegra20 SoC's.
 The VDE linux kernel driver is optional, it is required for HW accelerated video decoding. Currently VDE driver
 supports CAVLC H.264 videos only. The accelerated video output works without the VDE driver.
 
+Use of the most recent mainline upstream Linux kernel is very recommended, not all DRM fixes are backportable and some usability-critical features may be missed in older kernel.
+
 # Installation:
 ```
 $ sh autogen.sh
