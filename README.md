@@ -1,7 +1,6 @@
 # About
 
-This is a VDPAU backend driver for the NVIDIA Tegra20 SoC's. Currently
-supports CAVLC H.264 only.
+This is a VDPAU backend driver for the NVIDIA Tegra20 SoC's.
 
 # Requirements:
 
@@ -14,9 +13,8 @@ supports CAVLC H.264 only.
 > https://github.com/digetx/picasso_upstream_support/commit/2b08ee544a5dd806697933e14c117e375ca29a2f
 > https://github.com/digetx/picasso_upstream_support/commit/7f2036f832364a202356cedc54b2c4cc5c1a434c
 
-The VDE linux kernel driver is optional, it is required for HW accelerated video decoding. The accelerated video output works without it.
-
-
+The VDE linux kernel driver is optional, it is required for HW accelerated video decoding. Currently VDE driver
+supports CAVLC H.264 videos only. The accelerated video output works without the VDE driver.
 
 # Installation:
 ```
