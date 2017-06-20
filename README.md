@@ -7,12 +7,16 @@ supports CAVLC H.264 only.
 
 * libvdpau
 * pixman (http://www.pixman.org)
-* Linux kernel Video Decoder Engine (VDE) driver (https://github.com/digetx/picasso_upstream_support/tree/tegra-drm-fixes-and-vde)
 * libX11 libXext xextproto libXfixes libXv
 * libdrm-tegra (https://github.com/grate-driver/libdrm)
 * opentegra (https://github.com/grate-driver/xf86-video-opentegra)
+* Linux kernel Video Decoder Engine (VDE) driver, cherry-pick these patches to your kernel 
+> https://github.com/digetx/picasso_upstream_support/commit/2b08ee544a5dd806697933e14c117e375ca29a2f
+> https://github.com/digetx/picasso_upstream_support/commit/7f2036f832364a202356cedc54b2c4cc5c1a434c
 
 The VDE linux kernel driver is optional, it is required for HW accelerated video decoding. The accelerated video output works without it.
+
+
 
 # Installation:
 ```
