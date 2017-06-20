@@ -5,6 +5,7 @@ This is a VDPAU backend driver for the NVIDIA Tegra20 SoC's.
 # Requirements:
 
 Mandatory:
+* autotools
 * libvdpau
 * pixman (http://www.pixman.org)
 * libX11 libXext xextproto libXfixes libXv
@@ -25,6 +26,7 @@ Use of the most recent mainline upstream Linux kernel is very recommended, not a
 # Installation:
 ```
 $ sh autogen.sh
+$ sh configure --prefix=/
 $ make
 $ make install
 ```
