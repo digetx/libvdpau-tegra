@@ -31,7 +31,7 @@ static tegra_pq      * tegra_pqs[MAX_PRESENTATION_QUEUES_NB];
 tegra_device * get_device(VdpDevice device)
 {
     if (device >= MAX_DEVICES_NB ) {
-        ErrorMsg("%s: Invalid handle %u\n", __func__, device);
+        ErrorMsg("Invalid handle %u\n", device);
         return NULL;
     }
 
@@ -426,17 +426,17 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
 
     drm_fd = drmOpen("tegra", NULL);
     if (drm_fd < 0) {
-        perror("Failed to open tegra DRM");
+        perror("Failed to open tegra DRM\n");
         goto err_cleanup;
     }
 
     if (drmGetMagic(drm_fd, &magic)) {
-        ErrorMsg("drmGetMagic failed");
+        ErrorMsg("drmGetMagic failed\n");
         goto err_cleanup;
     }
 
     if (!DRI2Authenticate(display, DefaultRootWindow(display), magic)) {
-        ErrorMsg("DRI2Authenticate failed");
+        ErrorMsg("DRI2Authenticate failed\n");
         goto err_cleanup;
     }
 
