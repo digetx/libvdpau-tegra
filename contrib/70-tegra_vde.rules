@@ -1,0 +1,1 @@
+KERNEL=="tegra_vde", NAME="tegra_vde", GROUP="video", MODE="0666"
