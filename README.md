@@ -14,9 +14,10 @@ Mandatory:
 
 Optional:
 * mesa (https://github.com/grate-driver/mesa)
-* Linux kernel Video Decoder Engine (VDE) driver, cherry-pick these patches to your kernel 
-> https://github.com/digetx/picasso_upstream_support/commit/2b08ee544a5dd806697933e14c117e375ca29a2f
-> https://github.com/digetx/picasso_upstream_support/commit/7f2036f832364a202356cedc54b2c4cc5c1a434c
+* Linux kernel Video Decoder Engine (VDE) driver, cherry-pick these patches from https://github.com/grate-driver/linux to your kernel:
+
+   * staging: Introduce NVIDIA Tegra20 video decoder driver
+   * ARM: dts: tegra20: Add video decoder node
 
 The VDE linux kernel driver is optional, it is required for HW accelerated video decoding. Currently VDE driver
 supports CAVLC H.264 videos only. The accelerated video output works without the VDE driver.
