@@ -32,8 +32,8 @@
 extern "C" {
 #endif
 
-#define FLAG_IS_B_FRAME		(1 << 0)
-#define FLAG_IS_REFERENCE	(1 << 1)
+#define FLAG_B_FRAME		(1 << 0)
+#define FLAG_REFERENCE		(1 << 1)
 
 struct tegra_vde_h264_frame {
 	__s32 y_fd;
@@ -46,6 +46,8 @@ struct tegra_vde_h264_frame {
 	__u32 aux_offset;
 	__u32 frame_num;
 	__u32 flags;
+
+	__u32 reserved;
 } __attribute__((packed));
 
 struct tegra_vde_h264_decoder_ctx {
@@ -57,7 +59,7 @@ struct tegra_vde_h264_decoder_ctx {
 	__u8  dpb_ref_frames_with_earlier_poc_nb;
 
 	// SPS
-	__u8  is_baseline_profile;
+	__u8  baseline_profile;
 	__u8  level_idc;
 	__u8  log2_max_pic_order_cnt_lsb;
 	__u8  log2_max_frame_num;
@@ -76,17 +78,21 @@ struct tegra_vde_h264_decoder_ctx {
 	// Slice header
 	__u8  num_ref_idx_l0_active_minus1;
 	__u8  num_ref_idx_l1_active_minus1;
+
+	__u32 reserved;
 } __attribute__((packed));
 
-#define VDE_IOCTL_BASE			'v'
-#define VDE_IO(nr)			_IO(VDE_IOCTL_BASE,nr)
-#define VDE_IOR(nr,type)		_IOR(VDE_IOCTL_BASE,nr,type)
-#define VDE_IOW(nr,type)		_IOW(VDE_IOCTL_BASE,nr,type)
-#define VDE_IOWR(nr,type)		_IOWR(VDE_IOCTL_BASE,nr,type)
+#define VDE_IOCTL_BASE			('v' + 0x20)
 
-#define TEGRA_VDE_DECODE_H264		0x01
+#define VDE_IO(nr)			_IO(VDE_IOCTL_BASE, nr)
+#define VDE_IOR(nr, type)		_IOR(VDE_IOCTL_BASE, nr, type)
+#define VDE_IOW(nr, type)		_IOW(VDE_IOCTL_BASE, nr, type)
+#define VDE_IOWR(nr, type)		_IOWR(VDE_IOCTL_BASE, nr, type)
 
-#define TEGRA_VDE_IOCTL_DECODE_H264	VDE_IOW(VDE_IOCTL_BASE + TEGRA_VDE_DECODE_H264, struct tegra_vde_h264_decoder_ctx)
+#define TEGRA_VDE_DECODE_H264		0x00
+
+#define TEGRA_VDE_IOCTL_DECODE_H264	\
+	VDE_IOW(TEGRA_VDE_DECODE_H264, struct tegra_vde_h264_decoder_ctx)
 
 #if defined(__cplusplus)
 }

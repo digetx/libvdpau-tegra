@@ -317,12 +317,12 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
 
     surf->frame->frame_num = info->frame_num;
     surf->pic_order_cnt    = info->field_order_cnt[0];
-    surf->frame->flags    &= ~FLAG_IS_B_FRAME;
-    surf->frame->flags    |= (slice_type == B_FRAME) ? FLAG_IS_B_FRAME : 0;
+    surf->frame->flags    &= ~FLAG_B_FRAME;
+    surf->frame->flags    |= (slice_type == B_FRAME) ? FLAG_B_FRAME : 0;
 
     dpb_frames[0]        = *surf->frame;
-    dpb_frames[0].flags |= info->is_reference ? FLAG_IS_REFERENCE : 0;
-    dpb_frames[0].flags |= (slice_type_mod == B_FRAME) ? FLAG_IS_B_FRAME : 0;
+    dpb_frames[0].flags |= info->is_reference ? FLAG_REFERENCE : 0;
+    dpb_frames[0].flags |= (slice_type_mod == B_FRAME) ? FLAG_B_FRAME : 0;
 
     if (slice_type_mod != I_FRAME) {
         if (info->pic_order_cnt_type == 0) {
@@ -347,7 +347,7 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     ctx.dpb_frames_nb                       = 1 + refs_num;
     ctx.dpb_frames_ptr                      = (uintptr_t) dpb_frames;
     ctx.dpb_ref_frames_with_earlier_poc_nb  = ref_frames_with_earlier_poc_num;
-    ctx.is_baseline_profile                 = dec->is_baseline_profile;
+    ctx.baseline_profile                    = dec->is_baseline_profile;
     ctx.level_idc                           = tegra_level_idc(51);
     ctx.log2_max_pic_order_cnt_lsb          = info->log2_max_pic_order_cnt_lsb_minus4 + 4;
     ctx.log2_max_frame_num                  = info->log2_max_frame_num_minus4 + 4;
@@ -362,6 +362,7 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     ctx.pic_order_present_flag              = info->pic_order_present_flag;
     ctx.num_ref_idx_l0_active_minus1        = info->num_ref_idx_l0_active_minus1;
     ctx.num_ref_idx_l1_active_minus1        = info->num_ref_idx_l1_active_minus1;
+    ctx.reserved                            = 0;
 
     if (ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264, &ctx) != 0) {
         return VDP_STATUS_ERROR;
