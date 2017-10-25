@@ -54,7 +54,7 @@ struct tegra_vde_h264_decoder_ctx {
 	__s32 bitstream_data_fd;
 	__u32 bitstream_data_offset;
 
-	__u32 dpb_frames_ptr;
+	__u64 dpb_frames_ptr;
 	__u8  dpb_frames_nb;
 	__u8  dpb_ref_frames_with_earlier_poc_nb;
 
