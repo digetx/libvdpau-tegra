@@ -155,11 +155,7 @@ typedef struct tegra_surface {
 } tegra_surface;
 
 typedef struct tegra_decoder {
-    struct drm_tegra_bo *bitstream_bo;
     tegra_device *dev;
-    bitstream_reader reader;
-    int bitstream_data_fd;
-    void *bitstream_data;
     int is_baseline_profile;
     uint32_t width;
     uint32_t height;

@@ -19,8 +19,6 @@
 
 #include "vdpau_tegra.h"
 
-#define MAX_BITSTREAM_SIZE  (512 * 1024)
-
 struct frames_list {
     struct frames_list   *restrict next;
     struct tegra_surface *restrict ref_surf;
@@ -49,59 +47,121 @@ static int tegra_level_idc(int level)
     return 15;
 }
 
-static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
-                                          uint32_t count,
-                                          VdpBitstreamBuffer const *bufs)
+static struct drm_tegra_bo *alloc_data(tegra_decoder *dec, void **map,
+                                       int *dmabuf_fd, uint32_t size)
 {
-    char *bitstream = dec->bitstream_data;
-    int bytes, i;
+    struct drm_tegra_bo *bo;
     int ret;
 
-    ret = sync_dmabuf_write_start(dec->bitstream_data_fd);
+    ret = drm_tegra_bo_new(&bo, dec->dev->drm, 0, size);
 
-    assert(ret == 0);
-
-    if (ret) {
-        return VDP_STATUS_ERROR;
+    if (ret < 0) {
+        return NULL;
     }
 
-    for (i = 0, bytes = 0; i < count; i++) {
-        bytes += bufs[i].bitstream_bytes;
+    ret = drm_tegra_bo_map(bo, map);
 
+    if (ret < 0) {
+        drm_tegra_bo_unref(bo);
+        return NULL;
+    }
+
+    ret = drm_tegra_bo_to_dmabuf(bo, (uint32_t *) dmabuf_fd);
+
+    if (ret < 0) {
+        drm_tegra_bo_unref(bo);
+        return NULL;
+    }
+
+    return bo;
+}
+
+static void free_data(struct drm_tegra_bo *bo, int dmabuf_fd)
+{
+    drm_tegra_bo_unref(bo);
+    close(dmabuf_fd);
+}
+
+static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
+                                          uint32_t count,
+                                          VdpBitstreamBuffer const *bufs,
+                                          struct drm_tegra_bo **bo,
+                                          int *data_fd,
+                                          bitstream_reader *reader)
+{
+    char *start, *end;
+    char *bitstream;
+    uint32_t total_size = 0;
+    uint32_t aligned_size = 0;
+    int ret, i;
+
+    for (i = 0; i < count; i++) {
         if (bufs[i].struct_version != VDP_BITSTREAM_BUFFER_VERSION) {
             return VDP_STATUS_INVALID_STRUCT_VERSION;
         }
 
-        assert(bytes <= MAX_BITSTREAM_SIZE);
-
-        memcpy(bitstream, bufs[i].bitstream, bufs[i].bitstream_bytes);
-
-        bitstream += bufs[i].bitstream_bytes;
+        total_size += bufs[i].bitstream_bytes;
     }
 
-    ret = sync_dmabuf_write_end(dec->bitstream_data_fd);
+    *bo = NULL;
+
+    /* at first try to allocate / reserve 512KB for common allocations */
+    if (total_size < 512 * 1024) {
+        aligned_size = ALIGN(total_size, 512 * 1024);
+        *bo = alloc_data(dec, (void **)&start, data_fd, aligned_size);
+    }
+
+    if (*bo == NULL) {
+        /* try again without reservation */
+        aligned_size = ALIGN(total_size, 16 * 1024);
+        *bo = alloc_data(dec, (void **)&start, data_fd, aligned_size);
+
+        if (*bo == NULL) {
+            return VDP_STATUS_RESOURCES;
+        }
+    }
+
+    total_size = aligned_size;
+
+    ret = sync_dmabuf_write_start(*data_fd);
+    if (ret) {
+        free_data(*bo, *data_fd);
+        return VDP_STATUS_ERROR;
+    }
+
+    end = start + total_size;
+    bitstream = start;
+
+    for (i = 0; i < count; i++) {
+        memcpy(bitstream, bufs[i].bitstream, bufs[i].bitstream_bytes);
+        bitstream += bufs[i].bitstream_bytes;
+    }
+    memset(bitstream, 0x0, end - bitstream);
+
+    ret = sync_dmabuf_write_end(*data_fd);
 
     assert(ret == 0);
 
     if (ret) {
+        free_data(*bo, *data_fd);
         return VDP_STATUS_ERROR;
     }
 
-    bitstream = dec->bitstream_data;
-    bitstream_init(&dec->reader, dec->bitstream_data, bytes);
+    bitstream = start;
+    bitstream_init(reader, bitstream, total_size);
 
     assert(bitstream[0] == 0x00);
     assert(bitstream[1] == 0x00);
 
     if (bitstream[2] == 0x01) {
-        bitstream_reader_inc_offset(&dec->reader, 4);
+        bitstream_reader_inc_offset(reader, 4);
         return VDP_STATUS_OK;
     }
 
     assert(bitstream[2] == 0x00);
 
     if (bitstream[3] == 0x01) {
-        bitstream_reader_inc_offset(&dec->reader, 5);
+        bitstream_reader_inc_offset(reader, 5);
         return VDP_STATUS_OK;
     }
 
@@ -285,7 +345,9 @@ static int get_slice_type(bitstream_reader *reader)
 }
 
 static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
-                                   VdpPictureInfoH264 const *info)
+                                   VdpPictureInfoH264 const *info,
+                                   int bitstream_data_fd,
+                                   bitstream_reader *reader)
 {
     struct tegra_vde_h264_decoder_ctx ctx;
     struct tegra_vde_h264_frame dpb_frames[17];
@@ -293,7 +355,7 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     int32_t max_frame_num               = 1 << (info->log2_max_frame_num_minus4 + 4);
     int32_t delim_pic_order_cnt         = INT32_MAX;
     int ref_frames_with_earlier_poc_num = 0;
-    int slice_type                      = get_slice_type(&dec->reader);
+    int slice_type                      = get_slice_type(reader);
     int slice_type_mod                  = slice_type % 5;
     int frame_num_wrap                  = (info->frame_num == 0);
     int refs_num                        = 0;
@@ -342,7 +404,7 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
         }
     }
 
-    ctx.bitstream_data_fd                   = dec->bitstream_data_fd;
+    ctx.bitstream_data_fd                   = bitstream_data_fd;
     ctx.bitstream_data_offset               = 0;
     ctx.dpb_frames_nb                       = 1 + refs_num;
     ctx.dpb_frames_ptr                      = (uintptr_t) dpb_frames;
@@ -400,38 +462,6 @@ VdpStatus vdp_decoder_query_capabilities(VdpDevice device,
     return VDP_STATUS_OK;
 }
 
-static struct drm_tegra_bo *alloc_data(struct drm_tegra *drm, void **map,
-                                       int *dmabuf_fd, uint32_t size)
-{
-    struct drm_tegra_bo *bo;
-    uint32_t fd;
-    int ret;
-
-    ret = drm_tegra_bo_new(&bo, drm, 0, size);
-
-    if (ret < 0) {
-        return NULL;
-    }
-
-    ret = drm_tegra_bo_map(bo, map);
-
-    if (ret < 0) {
-        drm_tegra_bo_unref(bo);
-        return NULL;
-    }
-
-    ret = drm_tegra_bo_to_dmabuf(bo, &fd);
-
-    if (ret < 0) {
-        drm_tegra_bo_unref(bo);
-        return NULL;
-    }
-
-    *dmabuf_fd = fd;
-
-    return bo;
-}
-
 VdpStatus vdp_decoder_create(VdpDevice device,
                              VdpDecoderProfile profile,
                              uint32_t width, uint32_t height,
@@ -442,7 +472,6 @@ VdpStatus vdp_decoder_create(VdpDevice device,
     tegra_decoder *dec;
     VdpDecoder i;
     int is_baseline_profile = 0;
-    int dmabuf_fd;
 
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -478,17 +507,9 @@ VdpStatus vdp_decoder_create(VdpDevice device,
         return VDP_STATUS_RESOURCES;
     }
 
-    dec->bitstream_bo = alloc_data(dev->drm, &dec->bitstream_data,
-                                   &dmabuf_fd, MAX_BITSTREAM_SIZE);
-    if (dec->bitstream_bo == NULL) {
-        vdp_decoder_destroy(i);
-        return VDP_STATUS_RESOURCES;
-    }
-
     dec->dev = dev;
     dec->width = ALIGN(width, 16);
     dec->height = ALIGN(height, 16);
-    dec->bitstream_data_fd = dmabuf_fd;
     dec->is_baseline_profile = is_baseline_profile;
 
     *decoder = i;
@@ -505,9 +526,6 @@ VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
     }
 
     set_decoder(decoder, NULL);
-
-    close(dec->bitstream_data_fd);
-    drm_tegra_bo_unref(dec->bitstream_bo);
     free(dec);
 
     return VDP_STATUS_OK;
@@ -534,19 +552,27 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
 {
     tegra_decoder *dec = get_decoder(decoder);
     tegra_surface *surf = get_surface(target);
+    struct drm_tegra_bo *bitstream_bo;
+    bitstream_reader bitstream_reader;
+    int bitstream_data_fd;
     VdpStatus ret;
 
     if (dec == NULL || surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    ret = copy_bitstream_to_dmabuf(dec, bitstream_buffer_count, bufs);
+    ret = copy_bitstream_to_dmabuf(dec, bitstream_buffer_count, bufs,
+                                   &bitstream_bo, &bitstream_data_fd,
+                                   &bitstream_reader);
 
     if (ret != VDP_STATUS_OK) {
         return ret;
     }
 
-    ret = tegra_decode_h264(dec, surf, picture_info);
+    ret = tegra_decode_h264(dec, surf, picture_info,
+                            bitstream_data_fd, &bitstream_reader);
+
+    free_data(bitstream_bo, bitstream_data_fd);
 
     if (ret != VDP_STATUS_OK) {
         return ret;
