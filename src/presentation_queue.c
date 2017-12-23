@@ -312,11 +312,7 @@ VdpStatus vdp_presentation_queue_create(
 
     pthread_attr_destroy(&thread_attrs);
 
-    /*
-     * XXX: Unfortunately this doesn't work with MPlayer. Any player that
-     * doesn't invoke XInitThreads() may crash.
-     */
-    if (0) {
+    if (_Xglobal_lock) {
         pthread_attr_init(&thread_attrs);
         pthread_attr_setdetachstate(&thread_attrs, PTHREAD_CREATE_JOINABLE);
 
@@ -360,7 +356,7 @@ VdpStatus vdp_presentation_queue_destroy(
 
     pthread_mutex_unlock(&pq->lock);
 
-    if (0) {
+    if (_Xglobal_lock) {
         pthread_join(pq->x11_thread, NULL);
     }
     pthread_join(pq->disp_thread, NULL);
@@ -461,7 +457,7 @@ VdpStatus vdp_presentation_queue_display(
     surf->idle_hack = false;
 
     /* XXX: X11 app won't survive threading without XInitThreads() */
-    if (earliest_presentation_time == 0) {
+    if (earliest_presentation_time == 0 || !_Xglobal_lock) {
         XvPutImage(dev->display, dev->xv_port,
                    pqt->drawable, pqt->gc,
                    surf->xv_img,
