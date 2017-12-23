@@ -90,6 +90,7 @@ struct host1x_pixelbuffer {
     unsigned pitch;
     unsigned pitch_uv;
     uint32_t guard_offset[3];
+    uint32_t bo_offset[3];
 };
 
 #define PIXBUF_GUARD_AREA_SIZE    0x4000

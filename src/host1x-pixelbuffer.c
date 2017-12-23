@@ -39,6 +39,8 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
 {
     struct host1x_pixelbuffer *pixbuf;
     uint32_t flags = 0;
+    uint32_t y_size;
+    uint32_t uv_size;
     uint32_t bo_size;
     int ret;
 
@@ -73,11 +75,28 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
     if (layout == PIX_BUF_LAYOUT_TILED_16x16)
         height = ALIGN(height, 16);
 
-    bo_size = pitch * height;
+    y_size = pitch * height;
+    uv_size = pitch_uv * height / 2;
 
-    if (!pixbuf_guard_disabled) {
-        pixbuf->guard_offset[0] = bo_size;
-        bo_size += PIXBUF_GUARD_AREA_SIZE;
+    if (UNIFIED_BUFFER && format == PIX_BUF_FMT_YV12) {
+        if (!pixbuf_guard_disabled) {
+            pixbuf->guard_offset[0] = y_size;
+            y_size += PIXBUF_GUARD_AREA_SIZE;
+            uv_size += PIXBUF_GUARD_AREA_SIZE;
+        }
+
+        bo_size = ALIGN(y_size, 0xFF);
+        bo_size = ALIGN(bo_size + uv_size, 0xFF ) + uv_size;
+    } else {
+        bo_size = pitch * height;
+
+        if (!pixbuf_guard_disabled) {
+            pixbuf->guard_offset[0] = bo_size;
+
+            if (!pixbuf_guard_disabled) {
+                bo_size += PIXBUF_GUARD_AREA_SIZE;
+            }
+        }
     }
 
     ret = drm_tegra_bo_new(&pixbuf->bo, drm, flags, bo_size);
@@ -86,13 +105,16 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
         goto error_cleanup;
     }
 
-    if (format == PIX_BUF_FMT_YV12) {
-        bo_size = pitch_uv * height / 2;
+    if (!UNIFIED_BUFFER && format == PIX_BUF_FMT_YV12) {
+        bo_size = uv_size;
 
         if (!pixbuf_guard_disabled) {
             pixbuf->guard_offset[1] = bo_size;
             pixbuf->guard_offset[2] = bo_size;
-            bo_size += PIXBUF_GUARD_AREA_SIZE;
+
+            if (!pixbuf_guard_disabled) {
+                bo_size += PIXBUF_GUARD_AREA_SIZE;
+            }
         }
 
         ret = drm_tegra_bo_new(&pixbuf->bos[1], drm, flags, bo_size);
@@ -105,6 +127,24 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
         if (ret < 0){
             host1x_error("Failed to allocate Cr BO size %u\n", bo_size);
             goto error_cleanup;
+        }
+    }
+
+    if (UNIFIED_BUFFER && format == PIX_BUF_FMT_YV12) {
+        bo_size = pitch_uv * height / 2;
+
+        pixbuf->bos[1] = drm_tegra_bo_ref(pixbuf->bo);
+        pixbuf->bo_offset[1] = ALIGN(y_size, 0xFF);
+
+        if (!pixbuf_guard_disabled) {
+            pixbuf->guard_offset[1] = pixbuf->bo_offset[1] + bo_size;
+        }
+
+        pixbuf->bos[2] = drm_tegra_bo_ref(pixbuf->bo);
+        pixbuf->bo_offset[2] = ALIGN(pixbuf->bo_offset[1] + uv_size, 0xFF);
+
+        if (!pixbuf_guard_disabled) {
+            pixbuf->guard_offset[2] = pixbuf->bo_offset[2] + bo_size;
         }
     }
 

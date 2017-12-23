@@ -101,6 +101,8 @@
     fprintf(stderr, "%s:%d/%s(): " fmt, \
             __FILE__, __LINE__, __func__, ##args)
 
+#define UNIFIED_BUFFER  0
+
 typedef struct {
     int atomic;
 } atomic_t;

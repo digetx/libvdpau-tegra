@@ -507,8 +507,8 @@ coords_check:
                 /* cvb */ FLOAT_TO_FIXED_2_7(cscmat[2][2]) << 16 |
                 /* cvg */ FLOAT_TO_FIXED_1_7(cscmat[1][2])); /* cscthird */
 
-        tegra_stream_push_reloc(stream, src->bos[1], 0); /* uba */
-        tegra_stream_push_reloc(stream, src->bos[2], 0); /* vba */
+        tegra_stream_push_reloc(stream, src->bos[1], src->bo_offset[1]); /* uba */
+        tegra_stream_push_reloc(stream, src->bos[2], src->bo_offset[2]); /* vba */
     }
 
     tegra_stream_push(stream, dst_fmt << 8 | src_fmt); /* sbformat */

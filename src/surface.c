@@ -180,6 +180,9 @@ uint32_t create_surface(tegra_device *dev,
             goto err_cleanup;
         }
 
+        surf->cb_data += pixbuf->bo_offset[1];
+        frame->cb_offset = pixbuf->bo_offset[1];
+
         ret = drm_tegra_bo_forbid_caching(surf->cb_bo);
 
         if (ret < 0) {
@@ -199,6 +202,9 @@ uint32_t create_surface(tegra_device *dev,
         if (ret < 0) {
             goto err_cleanup;
         }
+
+        surf->cr_data += pixbuf->bo_offset[2];
+        frame->cr_offset = pixbuf->bo_offset[2];
 
         ret = drm_tegra_bo_forbid_caching(surf->cr_bo);
 
