@@ -147,7 +147,7 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
     tegra_stream_push(stream, 0x00000000);
     tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x1e, 7));
     tegra_stream_push(stream, /* controlsecond */
-                      (draw_outside ? 3 : 1) << 21 /* clip inside/outside */);
+                      (draw_outside ? 3 : 2) << 21 /* clip inside/outside */);
     tegra_stream_push(stream, /* controlmain */
                       (PIX_BUF_FORMAT_BYTES(pixbuf->format) >> 1) << 16 |
                       1 << 6 /* srcsld */);
