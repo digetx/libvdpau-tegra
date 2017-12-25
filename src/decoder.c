@@ -569,6 +569,8 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
         return ret;
     }
 
+    surf = shared_surface_swap_video(surf);
+
     ret = tegra_decode_h264(dec, surf, picture_info,
                             bitstream_data_fd, &bitstream_reader);
 

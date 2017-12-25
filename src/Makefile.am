@@ -10,6 +10,7 @@ libvdpau_tegra_la_SOURCES = vdpau_tegra.c \
                             surface_bitmap.c \
                             surface_video.c \
                             surface_mixer.c \
+                            surface_shared.c \
                             surface.c \
                             presentation_queue.c \
                             decoder.c \

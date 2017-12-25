@@ -28,6 +28,18 @@ static tegra_surface * tegra_surfaces[MAX_SURFACES_NB];
 static tegra_pqt     * tegra_pqts[MAX_PRESENTATION_QUEUE_TARGETS_NB];
 static tegra_pq      * tegra_pqs[MAX_PRESENTATION_QUEUES_NB];
 
+VdpCSCMatrix CSC_BT_601 = {
+    { 1.164384f, 0.000000f, 1.596027f },
+    { 1.164384f,-0.391762f,-0.812968f },
+    { 1.164384f, 2.017232f, 0.000000f },
+};
+
+VdpCSCMatrix CSC_BT_709 = {
+    { 1.164384f, 0.000000f, 1.792741f },
+    { 1.164384f,-0.213249f,-0.532909f },
+    { 1.164384f, 2.112402f, 0.000000f },
+};
+
 tegra_device * get_device(VdpDevice device)
 {
     if (device >= MAX_DEVICES_NB ) {
@@ -91,6 +103,22 @@ tegra_surface * get_surface(VdpBitmapSurface surface)
     return tegra_surfaces[surface];
 }
 
+tegra_surface * get_surface_ref(VdpBitmapSurface surface)
+{
+    tegra_surface *surf;
+
+    pthread_mutex_lock(&global_lock);
+
+    surf = get_surface(surface);
+    if (surf) {
+        ref_surface(surf);
+    }
+
+    pthread_mutex_unlock(&global_lock);
+
+    return surf;
+}
+
 void set_surface(VdpBitmapSurface surface, tegra_surface *surf)
 {
     if (surface >= MAX_SURFACES_NB) {
@@ -102,6 +130,22 @@ void set_surface(VdpBitmapSurface surface, tegra_surface *surf)
     }
 
     tegra_surfaces[surface] = surf;
+}
+
+void replace_surface(tegra_surface *old_surf, tegra_surface *new_surf)
+{
+    if (old_surf->surface_id >= MAX_SURFACES_NB) {
+        return;
+    }
+
+    if (old_surf != new_surf) {
+        assert(tegra_surfaces[old_surf->surface_id] == old_surf);
+
+        new_surf->surface_id = old_surf->surface_id;
+        old_surf->surface_id = MAX_SURFACES_NB;
+
+        tegra_surfaces[new_surf->surface_id] = new_surf;
+    }
 }
 
 tegra_pqt * get_presentation_queue_target(VdpPresentationQueueTarget target)
@@ -227,33 +271,13 @@ VdpStatus vdp_generate_csc_matrix(VdpProcamp *procamp,
 
     switch (standard) {
     case VDP_COLOR_STANDARD_ITUR_BT_601:
-        (*csc_matrix)[0][0] =  1.164f;
-        (*csc_matrix)[0][1] =  0.000f;
-        (*csc_matrix)[0][2] =  1.596f;
-
-        (*csc_matrix)[1][0] =  1.164f;
-        (*csc_matrix)[1][1] = -0.392f;
-        (*csc_matrix)[1][2] = -0.813f;
-
-        (*csc_matrix)[2][0] =  1.164f;
-        (*csc_matrix)[2][1] =  2.017f;
-        (*csc_matrix)[2][2] =  0.000f;
+        memcpy(csc_matrix, CSC_BT_601, sizeof(VdpCSCMatrix));
         break;
     case VDP_COLOR_STANDARD_ITUR_BT_709:
-        (*csc_matrix)[0][0] =  1.164f;
-        (*csc_matrix)[0][1] =  0.000f;
-        (*csc_matrix)[0][2] =  1.793f;
-
-        (*csc_matrix)[1][0] =  1.164f;
-        (*csc_matrix)[1][1] = -0.213f;
-        (*csc_matrix)[1][2] = -0.533f;
-
-        (*csc_matrix)[2][0] =  1.164f;
-        (*csc_matrix)[2][1] =  2.112f;
-        (*csc_matrix)[2][2] =  0.000f;
+        memcpy(csc_matrix, CSC_BT_709, sizeof(VdpCSCMatrix));
         break;
     default:
-        abort();
+        return VDP_STATUS_NO_IMPLEMENTATION;
     }
 
     if (procamp == NULL) {

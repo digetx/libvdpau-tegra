@@ -36,40 +36,23 @@ static uint32_t get_unused_surface_id(void)
     return id;
 }
 
-uint32_t create_surface(tegra_device *dev,
-                        uint32_t width,
-                        uint32_t height,
-                        VdpRGBAFormat rgba_format,
-                        int output,
-                        int video)
+tegra_surface *alloc_surface(tegra_device *dev,
+                             uint32_t width, uint32_t height,
+                             VdpRGBAFormat rgba_format,
+                             int output, int video)
 {
     tegra_surface *surf                 = calloc(1, sizeof(tegra_surface));
     pixman_image_t *pix                 = NULL;
     XvImage *xv_img                     = NULL;
     struct tegra_vde_h264_frame *frame  = NULL;
     struct host1x_pixelbuffer *pixbuf   = NULL;
-    uint32_t surface_id                 = VDP_INVALID_HANDLE;
     uint32_t stride                     = width * 4;
     uint32_t *bo_flinks                 = NULL;
     uint32_t *pitches                   = NULL;
     int ret;
 
-    if (surf == NULL) {
-        return VDP_INVALID_HANDLE;
-    }
-
-    pthread_mutex_lock(&global_lock);
-
-    surface_id = get_unused_surface_id();
-
-    if (surface_id != VDP_INVALID_HANDLE) {
-        set_surface(surface_id, surf);
-    }
-
-    pthread_mutex_unlock(&global_lock);
-
-    if (surface_id == VDP_INVALID_HANDLE) {
-        goto err_cleanup;
+    if (!surf) {
+        return NULL;
     }
 
     if (!video){
@@ -97,6 +80,7 @@ uint32_t create_surface(tegra_device *dev,
                                            pixbuf_fmt,
                                            PIX_BUF_LAYOUT_LINEAR);
         if (pixbuf == NULL) {
+            ret = -ENOMEM;
             goto err_cleanup;
         }
 
@@ -116,6 +100,7 @@ uint32_t create_surface(tegra_device *dev,
                                                 data, stride);
 
         if (pix == NULL) {
+            ret = -ENOMEM;
             goto err_cleanup;
         }
     }
@@ -124,6 +109,7 @@ uint32_t create_surface(tegra_device *dev,
         frame = calloc(1, sizeof(struct tegra_vde_h264_frame));
 
         if (frame == NULL) {
+            ret = -ENOMEM;
             goto err_cleanup;
         }
 
@@ -139,6 +125,7 @@ uint32_t create_surface(tegra_device *dev,
                                            PIX_BUF_FMT_YV12,
                                            PIX_BUF_LAYOUT_LINEAR);
         if (pixbuf == NULL) {
+            ret = -ENOMEM;
             goto err_cleanup;
         }
 
@@ -250,6 +237,7 @@ uint32_t create_surface(tegra_device *dev,
                                format_id, NULL, width, height);
         if (xv_img == NULL) {
             ErrorMsg("XvCreateImage failed\n");
+            ret = -ENOMEM;
             goto err_cleanup;
         }
 
@@ -258,12 +246,14 @@ uint32_t create_surface(tegra_device *dev,
         xv_img->data = calloc(1, xv_img->data_size);
 
         if (xv_img->data == NULL) {
+            ret = -ENOMEM;
             goto err_cleanup;
         }
 
         bo_flinks = (uint32_t *) xv_img->data;
 
-        if (drm_tegra_bo_get_name(pixbuf->bo, &bo_flinks[0]) != 0) {
+        ret = drm_tegra_bo_get_name(pixbuf->bo, &bo_flinks[0]);
+        if (ret != 0) {
             ErrorMsg("drm_tegra_bo_get_name failed\n");
             goto err_cleanup;
         }
@@ -291,16 +281,17 @@ uint32_t create_surface(tegra_device *dev,
     surf->xv_img = xv_img;
     surf->frame = frame;
     surf->flags = video ? SURFACE_VIDEO : 0;
+    surf->flags |= output ? SURFACE_OUTPUT : 0;
     surf->pixbuf = pixbuf;
     surf->dev = dev;
+    surf->width = width;
+    surf->height = height;
 
     ref_device(dev);
 
-    return surface_id;
+    return surf;
 
 err_cleanup:
-    set_surface(surface_id, NULL);
-
     if (xv_img != NULL) {
         free(xv_img->data);
         XFree(xv_img);
@@ -325,7 +316,42 @@ err_cleanup:
     free(frame);
     free(surf);
 
-    return VDP_INVALID_HANDLE;
+    return NULL;
+}
+
+uint32_t create_surface(tegra_device *dev,
+                        uint32_t width,
+                        uint32_t height,
+                        VdpRGBAFormat rgba_format,
+                        int output,
+                        int video)
+{
+    tegra_surface *surf;
+    uint32_t surface_id;
+
+    surf = alloc_surface(dev, width, height, rgba_format, output, video);
+
+    if (surf == NULL) {
+        return VDP_INVALID_HANDLE;
+    }
+
+    pthread_mutex_lock(&global_lock);
+
+    surface_id = get_unused_surface_id();
+
+    if (surface_id != VDP_INVALID_HANDLE) {
+        set_surface(surface_id, surf);
+    }
+
+    pthread_mutex_unlock(&global_lock);
+
+    if (surface_id != VDP_INVALID_HANDLE) {
+        surf->surface_id = surface_id;
+    } else {
+        destroy_surface(surf);
+    }
+
+    return surface_id;
 }
 
 void ref_surface(tegra_surface *surf)
@@ -337,6 +363,26 @@ VdpStatus unref_surface(tegra_surface *surf)
 {
     if (!atomic_dec_and_test(&surf->refcnt)) {
         return VDP_STATUS_OK;
+    }
+
+    if (surf->flags & SURFACE_OUTPUT) {
+        shared_surface_kill_disp(surf);
+    }
+
+    if (surf->pixbuf != NULL) {
+        host1x_pixelbuffer_free(surf->pixbuf);
+        surf->pixbuf = NULL;
+    }
+
+    if (surf->pix != NULL) {
+        pixman_image_unref(surf->pix);
+        surf->pix = NULL;
+    }
+
+    if (surf->xv_img != NULL) {
+        free(surf->xv_img->data);
+        XFree(surf->xv_img);
+        surf->xv_img = NULL;
     }
 
     if (surf->frame != NULL) {
@@ -358,25 +404,7 @@ VdpStatus unref_surface(tegra_surface *surf)
 VdpStatus destroy_surface(tegra_surface *surf)
 {
     pthread_mutex_lock(&surf->lock);
-
     surf->earliest_presentation_time = 0;
-
-    if (surf->pixbuf != NULL) {
-        host1x_pixelbuffer_free(surf->pixbuf);
-        surf->pixbuf = NULL;
-    }
-
-    if (surf->pix != NULL) {
-        pixman_image_unref(surf->pix);
-        surf->pix = NULL;
-    }
-
-    if (surf->xv_img != NULL) {
-        free(surf->xv_img->data);
-        XFree(surf->xv_img);
-        surf->xv_img = NULL;
-    }
-
     pthread_mutex_unlock(&surf->lock);
 
     return unref_surface(surf);

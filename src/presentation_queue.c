@@ -175,15 +175,37 @@ static void * presentation_queue_thr(void *opaque)
                     goto del_surface;
                 }
 
-                XvPutImage(dev->display, dev->xv_port,
-                           pqt->drawable, pqt->gc,
-                           surf->xv_img,
-                           0, 0,
-                           surf->disp_width,
-                           surf->disp_height,
-                           0, 0,
-                           surf->disp_width,
-                           surf->disp_height);
+                if (surf->set_bg && surf->bg_color != pqt->bg_color) {
+                    XSetWindowBackground(dev->display, pqt->drawable,
+                                         surf->bg_color);
+                    XClearWindow(dev->display, pqt->drawable);
+
+                    pqt->bg_color = surf->bg_color;
+                }
+
+                if (surf->shared) {
+                    XvPutImage(dev->display, dev->xv_port,
+                               pqt->drawable, pqt->gc,
+                               surf->shared->xv_img,
+                               surf->shared->src_x0,
+                               surf->shared->src_y0,
+                               surf->shared->src_width,
+                               surf->shared->src_height,
+                               surf->shared->dst_x0,
+                               surf->shared->dst_y0,
+                               surf->shared->dst_width,
+                               surf->shared->dst_height);
+                } else {
+                    XvPutImage(dev->display, dev->xv_port,
+                               pqt->drawable, pqt->gc,
+                               surf->xv_img,
+                               0, 0,
+                               surf->disp_width,
+                               surf->disp_height,
+                               0, 0,
+                               surf->disp_width,
+                               surf->disp_height);
+                }
 
                 XSync(dev->display, 0);
 
@@ -579,6 +601,9 @@ VdpStatus vdp_presentation_queue_target_create_x11(
     pqt->dev = dev;
     pqt->drawable = drawable;
     pqt->gc = XCreateGC(dev->display, drawable, 0, &values);
+
+    XSetWindowBackground(dev->display, drawable, pqt->bg_color);
+    XClearWindow(dev->display, drawable);
 
     *target = i;
 

@@ -86,6 +86,7 @@
 #define SURFACE_VIDEO               (1 << 0)
 #define SURFACE_YUV_UNCONVERTED     (1 << 1)
 #define SURFACE_DATA_NEEDS_SYNC     (1 << 2)
+#define SURFACE_OUTPUT              (1 << 3)
 
 #define PASSTHROUGH_DATA_SIZE   36
 
@@ -102,6 +103,9 @@
             __FILE__, __LINE__, __func__, ##args)
 
 #define UNIFIED_BUFFER  0
+
+extern VdpCSCMatrix CSC_BT_601;
+extern VdpCSCMatrix CSC_BT_709;
 
 typedef struct {
     int atomic;
@@ -120,6 +124,18 @@ typedef struct tegra_device {
     int vde_fd;
     int drm_fd;
 } tegra_device;
+
+struct tegra_surface;
+
+typedef struct tegra_shared_surface {
+    atomic_t refcnt;
+    struct tegra_surface *video;
+    struct tegra_surface *disp;
+    VdpCSCMatrix csc_matrix;
+    uint32_t src_x0, src_y0, src_width, src_height;
+    uint32_t dst_x0, dst_y0, dst_width, dst_height;
+    XvImage *xv_img;
+} tegra_shared_surface;
 
 typedef struct tegra_surface {
     tegra_device *dev;
@@ -144,6 +160,9 @@ typedef struct tegra_surface {
     uint32_t disp_width;
     uint32_t disp_height;
 
+    uint32_t width;
+    uint32_t height;
+
     VdpPresentationQueueStatus status;
     VdpTime first_presentation_time;
     VdpTime earliest_presentation_time;
@@ -154,6 +173,13 @@ typedef struct tegra_surface {
     pthread_mutex_t lock;
 
     bool idle_hack;
+
+    uint32_t surface_id;
+
+    tegra_shared_surface *shared;
+
+    uint32_t bg_color;
+    bool set_bg;
 } tegra_surface;
 
 typedef struct tegra_decoder {
@@ -166,6 +192,7 @@ typedef struct tegra_decoder {
 typedef struct tegra_mixer {
     VdpCSCMatrix csc_matrix;
     VdpColor bg_color;
+    tegra_device *dev;
 } tegra_mixer;
 
 typedef struct tegra_pqt {
@@ -174,12 +201,11 @@ typedef struct tegra_pqt {
     Drawable drawable;
     GC gc;
     atomic_t refcnt;
+    uint32_t bg_color;
 } tegra_pqt;
 
 typedef struct tegra_pq {
     tegra_pqt *pqt;
-    VdpColor background_color;
-
     struct list_head surf_list;
     pthread_mutex_t lock;
     pthread_cond_t cond;
@@ -204,7 +230,11 @@ void set_mixer(VdpVideoMixer mixer, tegra_mixer *mix);
 
 tegra_surface * get_surface(VdpBitmapSurface surface);
 
+tegra_surface * get_surface_ref(VdpBitmapSurface surface);
+
 void set_surface(VdpBitmapSurface surface, tegra_surface *surf);
+
+void replace_surface(tegra_surface *old_surf, tegra_surface *new_surf);
 
 tegra_pqt * get_presentation_queue_target(VdpPresentationQueueTarget target);
 
@@ -222,6 +252,11 @@ uint32_t create_surface(tegra_device *dev,
                         VdpRGBAFormat rgba_format,
                         int output,
                         int video);
+
+tegra_surface *alloc_surface(tegra_device *dev,
+                             uint32_t width, uint32_t height,
+                             VdpRGBAFormat rgba_format,
+                             int output, int video);
 
 VdpStatus destroy_surface(tegra_surface *surf);
 
@@ -245,6 +280,28 @@ enum frame_sync {
 };
 
 int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type);
+
+tegra_shared_surface *create_shared_surface(tegra_surface *disp,
+                                            tegra_surface *video,
+                                            VdpCSCMatrix const csc_matrix,
+                                            uint32_t src_x0,
+                                            uint32_t src_y0,
+                                            uint32_t src_width,
+                                            uint32_t src_height,
+                                            uint32_t dst_x0,
+                                            uint32_t dst_y0,
+                                            uint32_t dst_width,
+                                            uint32_t dst_height);
+
+void ref_shared_surface(tegra_shared_surface *shared);
+
+void unref_shared_surface(tegra_shared_surface *shared);
+
+tegra_surface * shared_surface_swap_video(tegra_surface *old);
+
+void shared_surface_transfer_video(tegra_surface *disp);
+
+void shared_surface_kill_disp(tegra_surface *disp);
 
 VdpGetErrorString                                   vdp_get_error_string;
 VdpGetProcAddress                                   vdp_get_proc_address;

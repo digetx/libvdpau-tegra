@@ -71,7 +71,7 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
         return VDP_STATUS_INVALID_CHROMA_TYPE;
     }
 
-    *surface = create_surface(dev, width, height, PIXMAN_x8r8g8b8, 0, 1);
+    *surface = create_surface(dev, width, height, ~0, 0, 1);
 
     if (*surface == VDP_INVALID_HANDLE) {
         return VDP_STATUS_RESOURCES;
@@ -89,7 +89,7 @@ VdpStatus vdp_video_surface_get_parameters(VdpVideoSurface surface,
                                            VdpChromaType *chroma_type,
                                            uint32_t *width, uint32_t *height)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf = get_surface_ref(surface);
 
     if (surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -102,12 +102,14 @@ VdpStatus vdp_video_surface_get_parameters(VdpVideoSurface surface,
     }
 
     if (width != NULL) {
-        *width = surf->pixbuf->width;
+        *width = surf->width;
     }
 
     if (width != NULL) {
-        *height = surf->pixbuf->height;
+        *height = surf->height;
     }
+
+    unref_surface(surf);
 
     return VDP_STATUS_OK;
 }
@@ -118,7 +120,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
                                         void *const *destination_data,
                                         uint32_t const *destination_pitches)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf = get_surface_ref(surface);
     void *dst_y  = destination_data[0];
     void *dst_cr = destination_data[1];
     void *dst_cb = destination_data[2];
@@ -135,17 +137,19 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
     case VDP_YCBCR_FORMAT_YV12:
         break;
     default:
+        unref_surface(surf);
         return VDP_STATUS_NO_IMPLEMENTATION;
     }
 
     ret = sync_video_frame_dmabufs(surf, READ_START);
 
     if (ret) {
+        unref_surface(surf);
         return ret;
     }
 
-    width  = surf->pixbuf->width;
-    height = surf->pixbuf->height;
+    width  = surf->width;
+    height = surf->height;
 
     /* Copy luma plane.  */
     ret = pixman_blt(surf->y_data, dst_y,
@@ -177,10 +181,13 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
     ret = sync_video_frame_dmabufs(surf, READ_END);
 
     if (ret) {
+        unref_surface(surf);
         return ret;
     }
 
     surf->flags &= ~SURFACE_DATA_NEEDS_SYNC;
+
+    unref_surface(surf);
 
     return VDP_STATUS_OK;
 }
@@ -191,7 +198,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
                                             void const *const *source_data,
                                             uint32_t const *source_pitches)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf = get_surface_ref(surface);
     void *src_y  = (void *)source_data[0];
     void *src_cr = (void *)source_data[1];
     void *src_cb = (void *)source_data[2];
@@ -208,17 +215,19 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
     case VDP_YCBCR_FORMAT_YV12:
         break;
     default:
+        unref_surface(surf);
         return VDP_STATUS_NO_IMPLEMENTATION;
     }
 
     ret = sync_video_frame_dmabufs(surf, WRITE_START);
 
     if (ret) {
+        unref_surface(surf);
         return ret;
     }
 
-    width  = surf->pixbuf->width;
-    height = surf->pixbuf->height;
+    width  = surf->width;
+    height = surf->height;
 
     /* Copy luma plane.  */
     ret = pixman_blt(src_y, surf->y_data,
@@ -252,11 +261,14 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
     ret = sync_video_frame_dmabufs(surf, WRITE_END);
 
     if (ret) {
+        unref_surface(surf);
         return ret;
     }
 
     surf->flags &= ~SURFACE_DATA_NEEDS_SYNC;
     surf->flags |= SURFACE_YUV_UNCONVERTED;
+
+    unref_surface(surf);
 
     return VDP_STATUS_OK;
 }

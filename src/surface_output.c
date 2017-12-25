@@ -243,6 +243,8 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         dst_y0 = 0;
     }
 
+    shared_surface_transfer_video(dst_surf);
+
     if (source_surface == VDP_INVALID_HANDLE) {
         ret = host1x_gr2d_clear_rect(dst_surf->dev->stream,
                                      dst_surf->pixbuf,
