@@ -341,14 +341,13 @@ static void *const tegra_vdpau_api[] =
     [VDP_FUNC_ID_PRESENTATION_QUEUE_BLOCK_UNTIL_SURFACE_IDLE]           = vdp_presentation_queue_block_until_surface_idle,
     [VDP_FUNC_ID_PRESENTATION_QUEUE_QUERY_SURFACE_STATUS]               = vdp_presentation_queue_query_surface_status,
     [VDP_FUNC_ID_PREEMPTION_CALLBACK_REGISTER]                          = vdp_preemption_callback_register,
-    [VDP_FUNC_ID_BASE_WINSYS]                                           = vdp_presentation_queue_target_create_x11,
 };
 
 VdpStatus vdp_get_proc_address(VdpDevice device, VdpFuncId function_id,
                                void **function_pointer)
 {
     switch (function_id) {
-    case VDP_FUNC_ID_GET_ERROR_STRING ... VDP_FUNC_ID_BASE_WINSYS:
+    case VDP_FUNC_ID_GET_ERROR_STRING ... VDP_FUNC_ID_PREEMPTION_CALLBACK_REGISTER:
         *function_pointer = tegra_vdpau_api[function_id];
 
         if (*function_pointer == NULL) {
@@ -356,11 +355,17 @@ VdpStatus vdp_get_proc_address(VdpDevice device, VdpFuncId function_id,
         }
 
         return VDP_STATUS_OK;
+
+    case VDP_FUNC_ID_PRESENTATION_QUEUE_TARGET_CREATE_X11:
+        *function_pointer = vdp_presentation_queue_target_create_x11;
+
+        return VDP_STATUS_OK;
+
     default:
-        return VDP_STATUS_INVALID_FUNC_ID;
+        break;
     }
 
-    return VDP_STATUS_NO_IMPLEMENTATION;
+    return VDP_STATUS_INVALID_FUNC_ID;
 }
 
 VdpStatus vdp_preemption_callback_register(VdpDevice device,
