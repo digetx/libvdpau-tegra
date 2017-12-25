@@ -198,26 +198,33 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
                                             void const *const *source_data,
                                             uint32_t const *source_pitches)
 {
-    tegra_surface *surf = get_surface_ref(surface);
+    tegra_surface *surf, *orig = get_surface_ref(surface);
     void *src_y  = (void *)source_data[0];
     void *src_cr = (void *)source_data[1];
     void *src_cb = (void *)source_data[2];
     int width, height;
     int ret;
 
-    if (surf == NULL) {
+    if (orig == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
-
-    assert(surf->flags & SURFACE_VIDEO);
 
     switch (source_ycbcr_format) {
     case VDP_YCBCR_FORMAT_YV12:
         break;
     default:
-        unref_surface(surf);
+        unref_surface(orig);
         return VDP_STATUS_NO_IMPLEMENTATION;
     }
+
+    surf = shared_surface_swap_video(orig);
+
+    if (orig != surf) {
+        unref_surface(orig);
+        ref_surface(surf);
+    }
+
+    assert(surf->flags & SURFACE_VIDEO);
 
     ret = sync_video_frame_dmabufs(surf, WRITE_START);
 

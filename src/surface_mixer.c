@@ -364,6 +364,7 @@ VdpStatus vdp_video_mixer_render(
     uint32_t bg_width, bg_height, bg_x0, bg_y0;
     uint32_t bg_color;
     bool draw_background = false;
+    int ret;
 
     if (dest_surf == NULL || mix == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -407,34 +408,38 @@ VdpStatus vdp_video_mixer_render(
         bg_y0 = 0;
     }
 
+    dest_surf->set_bg = false;
+    bg_color = (int)(mix->bg_color.alpha * 255) << 24;
+
+    switch (dest_surf->rgba_format) {
+    case VDP_RGBA_FORMAT_B8G8R8A8:
+        bg_color |= (int)(mix->bg_color.red * 255) << 16;
+        bg_color |= (int)(mix->bg_color.green * 255) << 8;
+        bg_color |= (int)(mix->bg_color.blue * 255) << 0;
+        break;
+
+    case VDP_RGBA_FORMAT_R8G8B8A8:
+        bg_color |= (int)(mix->bg_color.blue * 255) << 16;
+        bg_color |= (int)(mix->bg_color.green * 255) << 8;
+        bg_color |= (int)(mix->bg_color.red * 255) << 0;
+        break;
+
+    default:
+        abort();
+    }
+
     draw_background = (dst_vid_y0 != bg_y0 ||
                        dst_vid_x0 != bg_x0 ||
                        dst_vid_height < bg_height ||
                        dst_vid_width < bg_width);
 
-    dest_surf->set_bg = false;
-
     if (draw_background && !bg_surf) {
-        bg_color = (int)(mix->bg_color.alpha * 255) << 24;
-
-        switch (dest_surf->pixbuf->format) {
-        case PIX_BUF_FMT_ARGB8888:
-            bg_color |= (int)(mix->bg_color.red * 255) << 16;
-            bg_color |= (int)(mix->bg_color.green * 255) << 8;
-            bg_color |= (int)(mix->bg_color.blue * 255) << 0;
-            break;
-
-        case PIX_BUF_FMT_ABGR8888:
-            bg_color |= (int)(mix->bg_color.blue * 255) << 16;
-            bg_color |= (int)(mix->bg_color.green * 255) << 8;
-            bg_color |= (int)(mix->bg_color.red * 255) << 0;
-            break;
-
-        default:
-            abort();
-        }
-
         if (background_source_rect) {
+            ret = dynamic_alloc_surface_data(dest_surf);
+            if (ret) {
+                return VDP_STATUS_RESOURCES;
+            }
+
             host1x_gr2d_clear_rect_clipped(mix->dev->stream,
                                            dest_surf->pixbuf,
                                            bg_color,
@@ -452,6 +457,11 @@ VdpStatus vdp_video_mixer_render(
     }
 
     if (draw_background && bg_surf) {
+        ret = dynamic_alloc_surface_data(dest_surf);
+        if (ret) {
+            return VDP_STATUS_RESOURCES;
+        }
+
         host1x_gr2d_surface_blit(mix->dev->stream,
                                  bg_surf->pixbuf,
                                  dest_surf->pixbuf,
@@ -467,7 +477,7 @@ VdpStatus vdp_video_mixer_render(
     if (!draw_background) {
         shared = create_shared_surface(dest_surf,
                                        video_surf,
-                                       mix->csc_matrix,
+                                       &mix->csc_matrix,
                                        src_vid_x0,
                                        src_vid_y0,
                                        src_vid_width,
@@ -476,6 +486,23 @@ VdpStatus vdp_video_mixer_render(
                                        dst_vid_y0,
                                        dst_vid_width,
                                        dst_vid_height);
+        if (!shared) {
+            ret = dynamic_alloc_surface_data(dest_surf);
+            if (ret) {
+                return VDP_STATUS_RESOURCES;
+            }
+
+            host1x_gr2d_clear_rect_clipped(mix->dev->stream,
+                                           dest_surf->pixbuf,
+                                           bg_color,
+                                           bg_x0, bg_y0,
+                                           bg_width, bg_height,
+                                           dst_vid_x0, dst_vid_y0,
+                                           dst_vid_x0 + dst_vid_width,
+                                           dst_vid_y0 + dst_vid_height,
+                                           true);
+            dest_surf->set_bg = false;
+        }
     }
 
     if (!shared) {

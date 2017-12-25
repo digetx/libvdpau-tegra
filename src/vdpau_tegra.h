@@ -180,6 +180,10 @@ typedef struct tegra_surface {
 
     uint32_t bg_color;
     bool set_bg;
+
+    VdpRGBAFormat rgba_format;
+    bool data_allocated;
+    bool data_dirty;
 } tegra_surface;
 
 typedef struct tegra_decoder {
@@ -246,6 +250,14 @@ tegra_pq * get_presentation_queue(VdpPresentationQueue presentation_queue);
 void set_presentation_queue(VdpPresentationQueue presentation_queue,
                             tegra_pq *pq);
 
+int dynamic_alloc_surface_data(tegra_surface *surf);
+
+int dynamic_release_surface_data(tegra_surface *surf);
+
+int alloc_surface_data(tegra_surface *surf);
+
+int release_surface_data(tegra_surface *surf);
+
 uint32_t create_surface(tegra_device *dev,
                         uint32_t width,
                         uint32_t height,
@@ -283,7 +295,7 @@ int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type);
 
 tegra_shared_surface *create_shared_surface(tegra_surface *disp,
                                             tegra_surface *video,
-                                            VdpCSCMatrix const csc_matrix,
+                                            VdpCSCMatrix const *csc_matrix,
                                             uint32_t src_x0,
                                             uint32_t src_y0,
                                             uint32_t src_width,
@@ -299,7 +311,7 @@ void unref_shared_surface(tegra_shared_surface *shared);
 
 tegra_surface * shared_surface_swap_video(tegra_surface *old);
 
-void shared_surface_transfer_video(tegra_surface *disp);
+int shared_surface_transfer_video(tegra_surface *disp);
 
 void shared_surface_kill_disp(tegra_surface *disp);
 

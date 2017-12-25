@@ -96,29 +96,14 @@ VdpStatus vdp_bitmap_surface_get_parameters(VdpBitmapSurface surface,
                                             VdpBool *frequently_accessed)
 {
     tegra_surface *surf = get_surface(surface);
-    pixman_image_t *pix;
-    pixman_format_code_t pfmt;
 
     if (surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    pix  = surf->pix;
-    pfmt = pixman_image_get_format(pix);
-
-    switch (pfmt) {
-    case PIXMAN_a8r8g8b8:
-        *rgba_format = VDP_RGBA_FORMAT_R8G8B8A8;
-        break;
-    case PIXMAN_a8b8g8r8:
-        *rgba_format = VDP_RGBA_FORMAT_B8G8R8A8;
-        break;
-    default:
-        abort();
-    }
-
-    *width = pixman_image_get_width(pix);
-    *height = pixman_image_get_height(pix);
+    *rgba_format = surf->rgba_format;
+    *width = surf->width;
+    *height = surf->height;
     *frequently_accessed = VDP_FALSE;
 
     return VDP_STATUS_OK;
@@ -136,9 +121,20 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
     void *surf_data;
     uint32_t width, height;
     uint32_t x0, y0;
+    int err;
 
     if (surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
+    }
+
+    if (surf->flags & SURFACE_OUTPUT) {
+        err = shared_surface_transfer_video(surf);
+        if (err) {
+                return err;
+        }
+
+        /* XXX: check whether dirty data is overridden by surface blit */
+        surf->data_dirty = true;
     }
 
     pix       = surf->pix;

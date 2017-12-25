@@ -36,12 +36,34 @@ static uint32_t get_unused_surface_id(void)
     return id;
 }
 
-tegra_surface *alloc_surface(tegra_device *dev,
-                             uint32_t width, uint32_t height,
-                             VdpRGBAFormat rgba_format,
-                             int output, int video)
+int dynamic_alloc_surface_data(tegra_surface *surf)
 {
-    tegra_surface *surf                 = calloc(1, sizeof(tegra_surface));
+    if (!surf->data_allocated) {
+        return alloc_surface_data(surf);
+    }
+
+    return 0;
+}
+
+int dynamic_release_surface_data(tegra_surface *surf)
+{
+    if (surf->data_allocated) {
+        return release_surface_data(surf);
+    }
+
+    surf->data_dirty = false;
+
+    return 0;
+}
+
+int alloc_surface_data(tegra_surface *surf)
+{
+    tegra_device *dev                   = surf->dev;
+    uint32_t width                      = surf->width;
+    uint32_t height                     = surf->height;
+    VdpRGBAFormat rgba_format           = surf->rgba_format;
+    int output                          = surf->flags & SURFACE_OUTPUT;
+    int video                           = surf->flags & SURFACE_VIDEO;
     pixman_image_t *pix                 = NULL;
     XvImage *xv_img                     = NULL;
     struct tegra_vde_h264_frame *frame  = NULL;
@@ -51,11 +73,7 @@ tegra_surface *alloc_surface(tegra_device *dev,
     uint32_t *pitches                   = NULL;
     int ret;
 
-    if (!surf) {
-        return NULL;
-    }
-
-    if (!video){
+    if (!video) {
         pixman_format_code_t pfmt;
         enum pixel_format pixbuf_fmt;
         void *data;
@@ -72,6 +90,7 @@ tegra_surface *alloc_surface(tegra_device *dev,
             break;
 
         default:
+            ret = -EINVAL;
             goto err_cleanup;
         }
 
@@ -106,12 +125,7 @@ tegra_surface *alloc_surface(tegra_device *dev,
     }
 
     if (video) {
-        frame = calloc(1, sizeof(struct tegra_vde_h264_frame));
-
-        if (frame == NULL) {
-            ret = -ENOMEM;
-            goto err_cleanup;
-        }
+        frame = surf->frame;
 
         frame->y_fd = -1;
         frame->cb_fd = -1;
@@ -231,6 +245,10 @@ tegra_surface *alloc_surface(tegra_device *dev,
         case VDP_RGBA_FORMAT_B8G8R8A8:
             format_id = FOURCC_PASSTHROUGH_XRGB8888;
             break;
+
+        default:
+            ret = -EINVAL;
+            goto err_cleanup;
         }
 
         xv_img = XvCreateImage(dev->display, dev->xv_port,
@@ -263,33 +281,12 @@ tegra_surface *alloc_surface(tegra_device *dev,
         pitches[0] = pixbuf->pitch;
     }
 
-    ret = pthread_mutex_init(&surf->lock, NULL);
-    if (ret != 0) {
-        ErrorMsg("pthread_mutex_init failed\n");
-        goto err_cleanup;
-    }
-
-    ret = pthread_cond_init(&surf->idle_cond, NULL);
-    if (ret != 0) {
-        ErrorMsg("pthread_cond_init failed\n");
-        goto err_cleanup;
-    }
-
-    atomic_set(&surf->refcnt, 1);
-    surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
     surf->pix = pix;
     surf->xv_img = xv_img;
-    surf->frame = frame;
-    surf->flags = video ? SURFACE_VIDEO : 0;
-    surf->flags |= output ? SURFACE_OUTPUT : 0;
     surf->pixbuf = pixbuf;
-    surf->dev = dev;
-    surf->width = width;
-    surf->height = height;
+    surf->data_allocated = true;
 
-    ref_device(dev);
-
-    return surf;
+    return 0;
 
 err_cleanup:
     if (xv_img != NULL) {
@@ -313,8 +310,115 @@ err_cleanup:
         close(frame->aux_fd);
     }
 
+    return ret;
+}
+
+int release_surface_data(tegra_surface *surf)
+{
+    assert(surf->data_allocated);
+
+    if (surf->pixbuf != NULL) {
+        host1x_pixelbuffer_free(surf->pixbuf);
+        surf->pixbuf = NULL;
+    }
+
+    if (surf->pix != NULL) {
+        pixman_image_unref(surf->pix);
+        surf->pix = NULL;
+    }
+
+    if (surf->xv_img != NULL) {
+        free(surf->xv_img->data);
+        XFree(surf->xv_img);
+        surf->xv_img = NULL;
+    }
+
+    if (surf->frame != NULL) {
+        drm_tegra_bo_unref(surf->aux_bo);
+        close(surf->frame->y_fd);
+        close(surf->frame->cb_fd);
+        close(surf->frame->cr_fd);
+        close(surf->frame->aux_fd);
+
+        surf->frame->y_fd = -1;
+        surf->frame->cb_fd = -1;
+        surf->frame->cr_fd = -1;
+        surf->frame->aux_fd = -1;
+
+        surf->y_data = NULL;
+        surf->cb_data = NULL;
+        surf->cr_data = NULL;
+    }
+
+    surf->data_allocated = false;
+
+    return 0;
+}
+
+tegra_surface *alloc_surface(tegra_device *dev,
+                             uint32_t width, uint32_t height,
+                             VdpRGBAFormat rgba_format,
+                             int output, int video)
+{
+    tegra_surface *surf                 = calloc(1, sizeof(tegra_surface));
+    struct tegra_vde_h264_frame *frame  = NULL;
+    pthread_mutexattr_t mutex_attrs;
+    int ret;
+
+    if (!surf) {
+        return NULL;
+    }
+
+    if (video) {
+        frame = calloc(1, sizeof(struct tegra_vde_h264_frame));
+
+        if (frame == NULL) {
+            ret = -ENOMEM;
+            goto err_cleanup;
+        }
+    }
+
+    pthread_mutexattr_init(&mutex_attrs);
+    pthread_mutexattr_settype(&mutex_attrs, PTHREAD_MUTEX_RECURSIVE);
+
+    ret = pthread_mutex_init(&surf->lock, &mutex_attrs);
+    if (ret != 0) {
+        ErrorMsg("pthread_mutex_init failed\n");
+        goto err_cleanup;
+    }
+
+    ret = pthread_cond_init(&surf->idle_cond, NULL);
+    if (ret != 0) {
+        ErrorMsg("pthread_cond_init failed\n");
+        goto err_cleanup;
+    }
+
+    atomic_set(&surf->refcnt, 1);
+    surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+    surf->frame = frame;
+    surf->flags = video ? SURFACE_VIDEO : 0;
+    surf->flags |= output ? SURFACE_OUTPUT : 0;
+    surf->dev = dev;
+    surf->width = width;
+    surf->height = height;
+    surf->rgba_format = rgba_format;
+
+    if (!output) {
+        ret = alloc_surface_data(surf);
+        if (ret != 0) {
+            goto err_cleanup;
+        }
+    }
+
+    ref_device(dev);
+
+    return surf;
+
+err_cleanup:
     free(frame);
     free(surf);
+
+    ErrorMsg("failed to allocate surface %d %s\n", ret, strerror(ret));
 
     return NULL;
 }
@@ -332,7 +436,7 @@ uint32_t create_surface(tegra_device *dev,
     surf = alloc_surface(dev, width, height, rgba_format, output, video);
 
     if (surf == NULL) {
-        return VDP_INVALID_HANDLE;
+        return VDP_STATUS_RESOURCES;
     }
 
     pthread_mutex_lock(&global_lock);
@@ -369,30 +473,7 @@ VdpStatus unref_surface(tegra_surface *surf)
         shared_surface_kill_disp(surf);
     }
 
-    if (surf->pixbuf != NULL) {
-        host1x_pixelbuffer_free(surf->pixbuf);
-        surf->pixbuf = NULL;
-    }
-
-    if (surf->pix != NULL) {
-        pixman_image_unref(surf->pix);
-        surf->pix = NULL;
-    }
-
-    if (surf->xv_img != NULL) {
-        free(surf->xv_img->data);
-        XFree(surf->xv_img);
-        surf->xv_img = NULL;
-    }
-
-    if (surf->frame != NULL) {
-        drm_tegra_bo_unref(surf->aux_bo);
-        close(surf->frame->y_fd);
-        close(surf->frame->cb_fd);
-        close(surf->frame->cr_fd);
-        close(surf->frame->aux_fd);
-    }
-
+    dynamic_release_surface_data(surf);
     unref_device(surf->dev);
 
     free(surf->frame);

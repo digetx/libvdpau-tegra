@@ -61,9 +61,34 @@ static XvImage * create_video_xv(tegra_surface *video)
     return xv_img;
 }
 
+static bool custom_csc(VdpCSCMatrix const *csc_matrix)
+{
+    int i, k;
+
+    if (memcmp(*csc_matrix, CSC_BT_601, sizeof(VdpCSCMatrix)) == 0 ||
+            memcmp(*csc_matrix, CSC_BT_709, sizeof(VdpCSCMatrix)) == 0)
+                return false;
+
+    for (i = 0; i < 3; i++)
+        for (k = 0; k < 3; k++)
+            if (fabs((*csc_matrix)[i][k] - CSC_BT_601[i][k]) > 0.01f)
+                goto check_709;
+
+    return false;
+
+    /* XXX: Tegra's CSC is hardcoded to BT601 in the kernel driver */
+check_709:
+    for (i = 0; i < 3; i++)
+        for (k = 0; k < 3; k++)
+            if (fabs((*csc_matrix)[i][k] - CSC_BT_709[i][k]) > 0.01f)
+                return true;
+
+    return false;
+}
+
 tegra_shared_surface *create_shared_surface(tegra_surface *disp,
                                             tegra_surface *video,
-                                            VdpCSCMatrix const csc_matrix,
+                                            VdpCSCMatrix const *csc_matrix,
                                             uint32_t src_x0,
                                             uint32_t src_y0,
                                             uint32_t src_width,
@@ -74,28 +99,12 @@ tegra_shared_surface *create_shared_surface(tegra_surface *disp,
                                             uint32_t dst_height)
 {
     tegra_shared_surface *shared;
-    int i, k;
+    int ret;
 
-    for (i = 0; i < 3; i++)
-        for (k = 0; k < 3; k++)
-            if (fabs(csc_matrix[i][k] - CSC_BT_601[i][k]) > 0.01f)
-                goto check_709;
+    if (disp->data_dirty || custom_csc(csc_matrix)) {
+        return NULL;
+    }
 
-    goto shared_alloc;
-
-    /* XXX: Tegra's CSC is hardcoded to BT601 in the kernel driver */
-check_709:
-    for (i = 0; i < 3; i++)
-        for (k = 0; k < 3; k++)
-            if (fabs(csc_matrix[i][k] - CSC_BT_709[i][k]) > 0.01f)
-                goto custom_csc;
-
-    goto shared_alloc;
-
-custom_csc:
-    return NULL;
-
-shared_alloc:
     shared = calloc(1, sizeof(tegra_shared_surface));
     if (!shared) {
         return NULL;
@@ -119,6 +128,13 @@ shared_alloc:
     shared->dst_height = dst_height;
 
     if (!shared->xv_img) {
+        free(shared);
+        return NULL;
+    }
+
+    ret = dynamic_release_surface_data(disp);
+    if (ret) {
+        free(shared->xv_img);
         free(shared);
         return NULL;
     }
@@ -175,10 +191,11 @@ tegra_surface * shared_surface_swap_video(tegra_surface *old)
     return new;
 }
 
-void shared_surface_transfer_video(tegra_surface *disp)
+int shared_surface_transfer_video(tegra_surface *disp)
 {
     tegra_shared_surface *shared;
     tegra_surface *video;
+    int ret;
 
     assert(disp->flags & SURFACE_OUTPUT);
 
@@ -191,8 +208,16 @@ void shared_surface_transfer_video(tegra_surface *disp)
     }
     pthread_mutex_unlock(&shared_lock);
 
+    ret = dynamic_alloc_surface_data(disp);
+    if (ret) {
+        if (shared) {
+            goto unref;
+        }
+        return ret;
+    }
+
     if (!shared) {
-        return;
+        return 0;
     }
 
     if (disp->set_bg) {
@@ -222,10 +247,12 @@ void shared_surface_transfer_video(tegra_surface *disp)
                              shared->dst_y0,
                              shared->dst_width,
                              shared->dst_height);
-
+unref:
     unref_surface(disp);
     unref_surface(video);
     unref_shared_surface(shared);
+
+    return 0;
 }
 
 void shared_surface_kill_disp(tegra_surface *disp)
@@ -233,6 +260,7 @@ void shared_surface_kill_disp(tegra_surface *disp)
     tegra_shared_surface *shared = NULL;
 
     assert(disp->flags & SURFACE_OUTPUT);
+    disp->data_dirty = false;
 
     pthread_mutex_lock(&shared_lock);
 

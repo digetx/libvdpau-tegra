@@ -140,9 +140,7 @@ void replace_surface(tegra_surface *old_surf, tegra_surface *new_surf)
 
     if (old_surf != new_surf) {
         assert(tegra_surfaces[old_surf->surface_id] == old_surf);
-
         new_surf->surface_id = old_surf->surface_id;
-        old_surf->surface_id = MAX_SURFACES_NB;
 
         tegra_surfaces[new_surf->surface_id] = new_surf;
     }
@@ -288,15 +286,22 @@ VdpStatus vdp_generate_csc_matrix(VdpProcamp *procamp,
         return VDP_STATUS_INVALID_STRUCT_VERSION;
     }
 
-    uvcos = procamp->saturation * cosf(procamp->hue);
-    uvsin = procamp->saturation * sinf(procamp->hue);
+    if (procamp->hue != 0.0f ||
+            procamp->saturation != 1.0f ||
+                procamp->contrast != 1.0f) {
+        uvcos = procamp->saturation * cosf(procamp->hue);
+        uvsin = procamp->saturation * sinf(procamp->hue);
 
-    for (i = 0; i < 3; i++) {
-        float u = (*csc_matrix)[i][1] * uvcos + (*csc_matrix)[i][2] * uvsin;
-        float v = (*csc_matrix)[i][1] * uvsin + (*csc_matrix)[i][2] * uvcos;
-        (*csc_matrix)[i][0] = procamp->contrast;
-        (*csc_matrix)[i][1] = u;
-        (*csc_matrix)[i][2] = v;
+        for (i = 0; i < 3; i++) {
+            float u = (*csc_matrix)[i][1] * uvcos + (*csc_matrix)[i][2] * uvsin;
+            float v = (*csc_matrix)[i][1] * uvsin + (*csc_matrix)[i][2] * uvcos;
+            (*csc_matrix)[i][0] = procamp->contrast;
+            (*csc_matrix)[i][1] = u;
+            (*csc_matrix)[i][2] = v;
+            (*csc_matrix)[i][3] = -(u + v) / 2;
+            (*csc_matrix)[i][3] += 0.5 - procamp->contrast / 2;
+            (*csc_matrix)[i][3] += procamp->brightness;
+        }
     }
 
     return VDP_STATUS_OK;

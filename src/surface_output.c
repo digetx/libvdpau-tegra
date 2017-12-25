@@ -223,6 +223,11 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
     src_surf = get_surface(source_surface);
 
+    ret = shared_surface_transfer_video(dst_surf);
+    if (ret) {
+        return VDP_STATUS_RESOURCES;
+    }
+
     dst_pix  = dst_surf->pix;
     dst_data = pixman_image_get_data(dst_pix);
 
@@ -242,8 +247,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         dst_x0 = 0;
         dst_y0 = 0;
     }
-
-    shared_surface_transfer_video(dst_surf);
 
     if (source_surface == VDP_INVALID_HANDLE) {
         ret = host1x_gr2d_clear_rect(dst_surf->dev->stream,

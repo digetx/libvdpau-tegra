@@ -29,6 +29,67 @@ static VdpTime get_time(void)
     return (VdpTime)tp.tv_sec * 1000000000ULL + (VdpTime)tp.tv_nsec;
 }
 
+static void pqt_display_surface_to_idle_state(tegra_pqt *pqt)
+{
+    tegra_surface *surf = pqt->disp_surf;
+
+    if (!surf) {
+        return;
+    }
+
+    pthread_mutex_lock(&surf->lock);
+    if (surf->status == VDP_PRESENTATION_QUEUE_STATUS_VISIBLE) {
+        surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+        pthread_cond_signal(&surf->idle_cond);
+    }
+    pthread_mutex_unlock(&surf->lock);
+
+    unref_surface(surf);
+    pqt->disp_surf = NULL;
+}
+
+static void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf)
+{
+    tegra_device *dev = pqt->dev;
+
+    if (surf->set_bg && surf->bg_color != pqt->bg_color) {
+        XSetWindowBackground(dev->display, pqt->drawable, surf->bg_color);
+        XClearWindow(dev->display, pqt->drawable);
+
+        pqt->bg_color = surf->bg_color;
+    }
+
+    if (surf->shared) {
+        XvPutImage(dev->display, dev->xv_port,
+                   pqt->drawable, pqt->gc,
+                   surf->shared->xv_img,
+                   surf->shared->src_x0,
+                   surf->shared->src_y0,
+                   surf->shared->src_width,
+                   surf->shared->src_height,
+                   surf->shared->dst_x0,
+                   surf->shared->dst_y0,
+                   surf->shared->dst_width,
+                   surf->shared->dst_height);
+    } else {
+        XvPutImage(dev->display, dev->xv_port,
+                   pqt->drawable, pqt->gc,
+                   surf->xv_img,
+                   0, 0, surf->disp_width, surf->disp_height,
+                   0, 0, surf->disp_width, surf->disp_height);
+    }
+
+    XSync(dev->display, 0);
+
+    surf->first_presentation_time = get_time();
+    surf->status = VDP_PRESENTATION_QUEUE_STATUS_VISIBLE;
+
+    if (pqt->disp_surf != surf) {
+        pqt_display_surface_to_idle_state(pqt);
+        pqt->disp_surf = surf;
+    }
+}
+
 static void * x11_thr(void *opaque)
 {
     tegra_pq *pq = opaque;
@@ -74,17 +135,7 @@ static void * x11_thr(void *opaque)
         pthread_mutex_lock(&pq->lock);
 
         if (pqt->disp_surf) {
-                XvPutImage(dev->display, dev->xv_port,
-                           pqt->drawable, pqt->gc,
-                           pqt->disp_surf->xv_img,
-                           0, 0,
-                           pqt->disp_surf->disp_width,
-                           pqt->disp_surf->disp_height,
-                           0, 0,
-                           pqt->disp_surf->disp_width,
-                           pqt->disp_surf->disp_height);
-
-                XSync(dev->display, 0);
+            pqt_display_surface(pqt, pqt->disp_surf);
         }
 
         pthread_mutex_unlock(&pq->lock);
@@ -93,30 +144,10 @@ static void * x11_thr(void *opaque)
     return NULL;
 }
 
-static void pqt_display_surface_to_idle_state(tegra_pqt *pqt)
-{
-    tegra_surface *surf = pqt->disp_surf;
-
-    if (!surf) {
-        return;
-    }
-
-    pthread_mutex_lock(&surf->lock);
-    if (surf->status == VDP_PRESENTATION_QUEUE_STATUS_VISIBLE) {
-        surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
-        pthread_cond_signal(&surf->idle_cond);
-    }
-    pthread_mutex_unlock(&surf->lock);
-
-    unref_surface(surf);
-    pqt->disp_surf = NULL;
-}
-
 static void * presentation_queue_thr(void *opaque)
 {
     tegra_pq *pq = opaque;
     tegra_pqt *pqt = pq->pqt;
-    tegra_device *dev = pqt->dev;
     tegra_surface *surf, *tmp;
     struct timespec tp;
     VdpTime time = UINT64_MAX;
@@ -176,48 +207,7 @@ static void * presentation_queue_thr(void *opaque)
                     goto del_surface;
                 }
 
-                if (surf->set_bg && surf->bg_color != pqt->bg_color) {
-                    XSetWindowBackground(dev->display, pqt->drawable,
-                                         surf->bg_color);
-                    XClearWindow(dev->display, pqt->drawable);
-
-                    pqt->bg_color = surf->bg_color;
-                }
-
-                if (surf->shared) {
-                    XvPutImage(dev->display, dev->xv_port,
-                               pqt->drawable, pqt->gc,
-                               surf->shared->xv_img,
-                               surf->shared->src_x0,
-                               surf->shared->src_y0,
-                               surf->shared->src_width,
-                               surf->shared->src_height,
-                               surf->shared->dst_x0,
-                               surf->shared->dst_y0,
-                               surf->shared->dst_width,
-                               surf->shared->dst_height);
-                } else {
-                    XvPutImage(dev->display, dev->xv_port,
-                               pqt->drawable, pqt->gc,
-                               surf->xv_img,
-                               0, 0,
-                               surf->disp_width,
-                               surf->disp_height,
-                               0, 0,
-                               surf->disp_width,
-                               surf->disp_height);
-                }
-
-                XSync(dev->display, 0);
-
-                surf->first_presentation_time = get_time();
-                surf->status = VDP_PRESENTATION_QUEUE_STATUS_VISIBLE;
-
-                if (pqt->disp_surf != surf) {
-                    pqt_display_surface_to_idle_state(pqt);
-                    pqt->disp_surf = surf;
-                }
-
+                pqt_display_surface(pqt, surf);
                 ref_surface(surf);
 del_surface:
                 LIST_DEL(&surf->list_item);
@@ -441,7 +431,6 @@ VdpStatus vdp_presentation_queue_display(
     tegra_surface *surf = get_surface(surface);
     tegra_pq *pq = get_presentation_queue(presentation_queue);
     tegra_pqt *pqt;
-    tegra_device *dev;
     VdpTime time;
 
     if (pq == NULL) {
@@ -449,7 +438,6 @@ VdpStatus vdp_presentation_queue_display(
     }
 
     pqt = pq->pqt;
-    dev = pqt->dev;
 
     /* This will happen on surface allocation failure. */
     if (surf == NULL) {
@@ -466,7 +454,7 @@ VdpStatus vdp_presentation_queue_display(
         pthread_cond_signal(&pq->cond);
         pthread_mutex_unlock(&pq->lock);
 
-        return VDP_STATUS_INVALID_HANDLE;
+        return VDP_STATUS_RESOURCES;
     }
 
     pthread_mutex_lock(&pq->lock);
@@ -476,26 +464,14 @@ VdpStatus vdp_presentation_queue_display(
         LIST_DEL(&surf->list_item);
     }
 
-    surf->disp_width  = clip_width  ?: surf->xv_img->width;
-    surf->disp_height = clip_height ?: surf->xv_img->height;
+    ref_surface(surf);
+    surf->disp_width  = clip_width  ?: surf->width;
+    surf->disp_height = clip_height ?: surf->height;
     surf->idle_hack = false;
 
     /* XXX: X11 app won't survive threading without XInitThreads() */
     if (earliest_presentation_time == 0 || !_Xglobal_lock) {
-        XvPutImage(dev->display, dev->xv_port,
-                   pqt->drawable, pqt->gc,
-                   surf->xv_img,
-                   0, 0,
-                   surf->disp_width,
-                   surf->disp_height,
-                   0, 0,
-                   surf->disp_width,
-                   surf->disp_height);
-
-        XSync(dev->display, 0);
-
-        surf->status = VDP_PRESENTATION_QUEUE_STATUS_VISIBLE;
-        surf->first_presentation_time = get_time();
+        pqt_display_surface(pqt, surf);
         surf->idle_hack = true;
 
         pthread_mutex_unlock(&surf->lock);
@@ -504,7 +480,6 @@ VdpStatus vdp_presentation_queue_display(
         return VDP_STATUS_OK;
     }
 
-    ref_surface(surf);
     LIST_ADDTAIL(&surf->list_item, &pq->surf_list);
 
     surf->status = VDP_PRESENTATION_QUEUE_STATUS_QUEUED;
