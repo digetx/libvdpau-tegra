@@ -369,9 +369,6 @@ VdpStatus vdp_video_mixer_render(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    assert(dest_surf->idle_hack ||
-           dest_surf->status == VDP_PRESENTATION_QUEUE_STATUS_IDLE);
-
     shared_surface_kill_disp(dest_surf);
 
     if (destination_video_rect != NULL) {

@@ -95,19 +95,20 @@ static void * x11_thr(void *opaque)
 
 static void pqt_display_surface_to_idle_state(tegra_pqt *pqt)
 {
-    if (!pqt->disp_surf) {
+    tegra_surface *surf = pqt->disp_surf;
+
+    if (!surf) {
         return;
     }
 
-    pthread_mutex_lock(&pqt->disp_surf->lock);
+    pthread_mutex_lock(&surf->lock);
+    if (surf->status == VDP_PRESENTATION_QUEUE_STATUS_VISIBLE) {
+        surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+        pthread_cond_signal(&surf->idle_cond);
+    }
+    pthread_mutex_unlock(&surf->lock);
 
-    pqt->disp_surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
-    pthread_cond_signal(&pqt->disp_surf->idle_cond);
-
-    pthread_mutex_unlock(&pqt->disp_surf->lock);
-
-    unref_surface(pqt->disp_surf);
-
+    unref_surface(surf);
     pqt->disp_surf = NULL;
 }
 
@@ -471,8 +472,9 @@ VdpStatus vdp_presentation_queue_display(
     pthread_mutex_lock(&pq->lock);
     pthread_mutex_lock(&surf->lock);
 
-    assert(surf->idle_hack ||
-           surf->status == VDP_PRESENTATION_QUEUE_STATUS_IDLE);
+    if (surf->status == VDP_PRESENTATION_QUEUE_STATUS_QUEUED) {
+        LIST_DEL(&surf->list_item);
+    }
 
     surf->disp_width  = clip_width  ?: surf->xv_img->width;
     surf->disp_height = clip_height ?: surf->xv_img->height;
@@ -521,8 +523,9 @@ VdpStatus vdp_presentation_queue_block_until_surface_idle(
                                         VdpOutputSurface surface,
                                         VdpTime *first_presentation_time)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *itr, *surf = get_surface(surface);
     tegra_pq *pq = get_presentation_queue(presentation_queue);
+    VdpStatus ret = VDP_STATUS_ERROR;
 
     if (surf == NULL || pq == NULL) {
         *first_presentation_time = get_time();
@@ -533,16 +536,33 @@ VdpStatus vdp_presentation_queue_block_until_surface_idle(
 
     pthread_mutex_lock(&surf->lock);
 
-    if (!surf->idle_hack && surf->status != VDP_PRESENTATION_QUEUE_STATUS_IDLE)
-        pthread_cond_wait(&surf->idle_cond, &surf->lock);
+    if (surf->idle_hack ||
+        surf->status == VDP_PRESENTATION_QUEUE_STATUS_IDLE) {
+        *first_presentation_time = surf->first_presentation_time;
+        ret = VDP_STATUS_OK;
+        goto unlock;
+    }
 
-    *first_presentation_time = surf->first_presentation_time;
+    LIST_FOR_EACH_ENTRY(itr, &pq->surf_list, list_item) {
+        if (itr->earliest_presentation_time > surf->earliest_presentation_time) {
+            ret = VDP_STATUS_OK;
+            break;
+        }
+    }
 
+    if (ret == VDP_STATUS_OK) {
+         pthread_cond_wait(&surf->idle_cond, &surf->lock);
+        *first_presentation_time = surf->first_presentation_time;
+    } else {
+        *first_presentation_time = 0;
+    }
+
+unlock:
     pthread_mutex_unlock(&surf->lock);
 
     unref_surface(surf);
 
-    return VDP_STATUS_OK;
+    return ret;
 }
 
 VdpStatus vdp_presentation_queue_query_surface_status(
