@@ -109,12 +109,6 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
-        ret = drm_tegra_bo_forbid_caching(pixbuf->bo);
-
-        if (ret < 0) {
-            goto err_cleanup;
-        }
-
         pix = pixman_image_create_bits_no_clear(pfmt, width, height,
                                                 data, stride);
 
@@ -161,12 +155,6 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
-        ret = drm_tegra_bo_forbid_caching(surf->y_bo);
-
-        if (ret < 0) {
-            goto err_cleanup;
-        }
-
         /* blue plane */
 
         ret = drm_tegra_bo_to_dmabuf(surf->cb_bo, (uint32_t *) &frame->cb_fd);
@@ -183,12 +171,6 @@ int alloc_surface_data(tegra_surface *surf)
 
         surf->cb_data += pixbuf->bo_offset[1];
         frame->cb_offset = pixbuf->bo_offset[1];
-
-        ret = drm_tegra_bo_forbid_caching(surf->cb_bo);
-
-        if (ret < 0) {
-            goto err_cleanup;
-        }
 
         /* red plane */
 
@@ -207,12 +189,6 @@ int alloc_surface_data(tegra_surface *surf)
         surf->cr_data += pixbuf->bo_offset[2];
         frame->cr_offset = pixbuf->bo_offset[2];
 
-        ret = drm_tegra_bo_forbid_caching(surf->cr_bo);
-
-        if (ret < 0) {
-            goto err_cleanup;
-        }
-
         /* aux stuff */
 
         ret = drm_tegra_bo_new(&surf->aux_bo, dev->drm, 0,
@@ -222,12 +198,6 @@ int alloc_surface_data(tegra_surface *surf)
         }
 
         ret = drm_tegra_bo_to_dmabuf(surf->aux_bo, (uint32_t *) &frame->aux_fd);
-
-        if (ret < 0) {
-            goto err_cleanup;
-        }
-
-        ret = drm_tegra_bo_forbid_caching(surf->aux_bo);
 
         if (ret < 0) {
             goto err_cleanup;
