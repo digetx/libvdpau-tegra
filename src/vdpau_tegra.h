@@ -214,7 +214,6 @@ typedef struct tegra_pq {
     pthread_mutex_t lock;
     pthread_cond_t cond;
     pthread_t disp_thread;
-    pthread_t x11_thread;
     bool exit;
 } tegra_pq;
 

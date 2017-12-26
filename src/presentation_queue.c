@@ -90,60 +90,6 @@ static void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf)
     }
 }
 
-static void * x11_thr(void *opaque)
-{
-    tegra_pq *pq = opaque;
-    tegra_pqt *pqt = pq->pqt;
-    tegra_device *dev = pqt->dev;
-    XEvent event;
-    int x = 0, y = 0, width = 0, height = 0;
-
-    while (true) {
-        if (!pq->exit &&
-            !XCheckWindowEvent(dev->display, pqt->drawable,
-                               StructureNotifyMask, &event)) {
-            usleep(100000);
-            continue;
-        }
-
-        if (pq->exit)
-            break;
-
-        switch (event.type) {
-        case ConfigureNotify:
-            if (x != event.xconfigure.x)
-                break;
-
-            if (y != event.xconfigure.y)
-                break;
-
-            if (width != event.xconfigure.width)
-                break;
-
-            if (height != event.xconfigure.height)
-                break;
-
-        default:
-            continue;
-        }
-
-        x = event.xconfigure.x;
-        y = event.xconfigure.y;
-        width = event.xconfigure.width;
-        height = event.xconfigure.height;
-
-        pthread_mutex_lock(&pq->lock);
-
-        if (pqt->disp_surf) {
-            pqt_display_surface(pqt, pqt->disp_surf);
-        }
-
-        pthread_mutex_unlock(&pq->lock);
-    }
-
-    return NULL;
-}
-
 static void * presentation_queue_thr(void *opaque)
 {
     tegra_pq *pq = opaque;
@@ -325,19 +271,6 @@ VdpStatus vdp_presentation_queue_create(
 
     pthread_attr_destroy(&thread_attrs);
 
-    if (_Xglobal_lock) {
-        pthread_attr_init(&thread_attrs);
-        pthread_attr_setdetachstate(&thread_attrs, PTHREAD_CREATE_JOINABLE);
-
-        ret = pthread_create(&pq->x11_thread, &thread_attrs, x11_thr, pq);
-        if (ret != 0) {
-            ErrorMsg("pthread_create failed\n");
-            return VDP_STATUS_RESOURCES;
-        }
-
-        pthread_attr_destroy(&thread_attrs);
-    }
-
     atomic_inc(&pqt->refcnt);
     ref_device(dev);
 
@@ -366,13 +299,9 @@ VdpStatus vdp_presentation_queue_destroy(
 
     pq->exit = true;
     pthread_cond_signal(&pq->cond);
-
     pthread_mutex_unlock(&pq->lock);
-
-    if (_Xglobal_lock) {
-        pthread_join(pq->x11_thread, NULL);
-    }
     pthread_join(pq->disp_thread, NULL);
+
     unref_queue_target(pqt);
     unref_device(dev);
     free(pq);
@@ -469,8 +398,7 @@ VdpStatus vdp_presentation_queue_display(
     surf->disp_height = clip_height ?: surf->height;
     surf->idle_hack = false;
 
-    /* XXX: X11 app won't survive threading without XInitThreads() */
-    if (earliest_presentation_time == 0 || !_Xglobal_lock) {
+    if (earliest_presentation_time == 0) {
         pqt_display_surface(pqt, surf);
         surf->idle_hack = true;
 
