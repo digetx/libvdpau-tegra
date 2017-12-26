@@ -238,7 +238,7 @@ int shared_surface_transfer_video(tegra_surface *disp)
     host1x_gr2d_surface_blit(video->dev->stream,
                              video->pixbuf,
                              disp->pixbuf,
-                             shared->csc_matrix,
+                             &shared->csc_matrix,
                              shared->src_x0,
                              shared->src_y0,
                              shared->src_width,

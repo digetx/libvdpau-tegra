@@ -334,7 +334,7 @@ static uint32_t sb_offset(struct host1x_pixelbuffer *pixbuf,
 int host1x_gr2d_surface_blit(struct tegra_stream *stream,
                              struct host1x_pixelbuffer *src,
                              struct host1x_pixelbuffer *dst,
-                             VdpCSCMatrix cscmat,
+                             VdpCSCMatrix *cscmat,
                              unsigned int sx, unsigned int sy,
                              unsigned int src_width, unsigned int src_height,
                              unsigned int dx, unsigned int dy,
@@ -497,15 +497,15 @@ coords_check:
 
         tegra_stream_push(stream,
                 /* yos */ (-16) << 24 |
-                /* cvr */ FLOAT_TO_FIXED_2_7(cscmat[0][2]) << 12 |
-                /* cub */ FLOAT_TO_FIXED_2_7(cscmat[2][1])); /* cscfirst */
+                /* cvr */ FLOAT_TO_FIXED_2_7((*cscmat)[0][2]) << 12 |
+                /* cub */ FLOAT_TO_FIXED_2_7((*cscmat)[2][1])); /* cscfirst */
         tegra_stream_push(stream,
-                /* cyx */ FLOAT_TO_FIXED_1_7(cscmat[0][0]) << 24 |
-                /* cur */ FLOAT_TO_FIXED_2_7(cscmat[0][1]) << 12 |
-                /* cug */ FLOAT_TO_FIXED_1_7(cscmat[1][1])); /* cscsecond */
+                /* cyx */ FLOAT_TO_FIXED_1_7((*cscmat)[0][0]) << 24 |
+                /* cur */ FLOAT_TO_FIXED_2_7((*cscmat)[0][1]) << 12 |
+                /* cug */ FLOAT_TO_FIXED_1_7((*cscmat)[1][1])); /* cscsecond */
         tegra_stream_push(stream,
-                /* cvb */ FLOAT_TO_FIXED_2_7(cscmat[2][2]) << 16 |
-                /* cvg */ FLOAT_TO_FIXED_1_7(cscmat[1][2])); /* cscthird */
+                /* cvb */ FLOAT_TO_FIXED_2_7((*cscmat)[2][2]) << 16 |
+                /* cvg */ FLOAT_TO_FIXED_1_7((*cscmat)[1][2])); /* cscthird */
 
         tegra_stream_push_reloc(stream, src->bos[1], src->bo_offset[1]); /* uba */
         tegra_stream_push_reloc(stream, src->bos[2], src->bo_offset[2]); /* vba */
