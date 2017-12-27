@@ -133,10 +133,13 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
 
     assert(surf->flags & SURFACE_VIDEO);
 
+    pthread_mutex_lock(&surf->lock);
+
     switch (destination_ycbcr_format) {
     case VDP_YCBCR_FORMAT_YV12:
         break;
     default:
+        pthread_mutex_unlock(&surf->lock);
         unref_surface(surf);
         return VDP_STATUS_NO_IMPLEMENTATION;
     }
@@ -144,6 +147,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
     ret = sync_video_frame_dmabufs(surf, READ_START);
 
     if (ret) {
+        pthread_mutex_unlock(&surf->lock);
         unref_surface(surf);
         return ret;
     }
@@ -181,12 +185,14 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
     ret = sync_video_frame_dmabufs(surf, READ_END);
 
     if (ret) {
+        pthread_mutex_unlock(&surf->lock);
         unref_surface(surf);
         return ret;
     }
 
     surf->flags &= ~SURFACE_DATA_NEEDS_SYNC;
 
+    pthread_mutex_unlock(&surf->lock);
     unref_surface(surf);
 
     return VDP_STATUS_OK;
@@ -209,6 +215,8 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    assert(orig->flags & SURFACE_VIDEO);
+
     switch (source_ycbcr_format) {
     case VDP_YCBCR_FORMAT_YV12:
         break;
@@ -223,8 +231,6 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
         unref_surface(orig);
         ref_surface(surf);
     }
-
-    assert(surf->flags & SURFACE_VIDEO);
 
     ret = sync_video_frame_dmabufs(surf, WRITE_START);
 

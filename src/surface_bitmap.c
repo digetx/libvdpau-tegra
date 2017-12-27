@@ -127,9 +127,12 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    pthread_mutex_lock(&surf->lock);
+
     if (surf->flags & SURFACE_OUTPUT) {
         err = shared_surface_transfer_video(surf);
         if (err) {
+                pthread_mutex_unlock(&surf->lock);
                 return err;
         }
 
@@ -165,6 +168,8 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
     assert(ret != 0);
 
     host1x_pixelbuffer_check_guard(surf->pixbuf);
+
+    pthread_mutex_unlock(&surf->lock);
 
     return VDP_STATUS_OK;
 }

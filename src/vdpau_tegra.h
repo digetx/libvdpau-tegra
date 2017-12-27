@@ -198,6 +198,7 @@ typedef struct tegra_decoder {
 
 typedef struct tegra_mixer {
     struct host1x_csc_params csc;
+    pthread_mutex_t lock;
     VdpColor bg_color;
     tegra_device *dev;
     bool custom_csc;

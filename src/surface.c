@@ -38,22 +38,29 @@ static uint32_t get_unused_surface_id(void)
 
 int dynamic_alloc_surface_data(tegra_surface *surf)
 {
-    if (!surf->data_allocated) {
-        return alloc_surface_data(surf);
-    }
+    int ret = 0;
 
-    return 0;
+    pthread_mutex_lock(&surf->lock);
+    if (!surf->data_allocated) {
+        ret = alloc_surface_data(surf);
+    }
+    pthread_mutex_unlock(&surf->lock);
+
+    return ret;
 }
 
 int dynamic_release_surface_data(tegra_surface *surf)
 {
+    int ret = 0;
+
+    pthread_mutex_lock(&surf->lock);
     if (surf->data_allocated) {
-        return release_surface_data(surf);
+        ret = release_surface_data(surf);
     }
-
     surf->data_dirty = false;
+    pthread_mutex_unlock(&surf->lock);
 
-    return 0;
+    return ret;
 }
 
 int alloc_surface_data(tegra_surface *surf)
@@ -439,12 +446,13 @@ VdpStatus unref_surface(tegra_surface *surf)
         return VDP_STATUS_OK;
     }
 
+    pthread_mutex_lock(&surf->lock);
     if (surf->flags & SURFACE_OUTPUT) {
         shared_surface_kill_disp(surf);
     }
-
     dynamic_release_surface_data(surf);
     unref_device(surf->dev);
+    pthread_mutex_unlock(&surf->lock);
 
     free(surf->frame);
     free(surf);

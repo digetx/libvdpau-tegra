@@ -71,7 +71,7 @@ static void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf)
                    surf->shared->dst_y0,
                    surf->shared->dst_width,
                    surf->shared->dst_height);
-    } else {
+    } else if (surf->xv_img) {
         XvPutImage(dev->display, dev->xv_port,
                    pqt->drawable, pqt->gc,
                    surf->xv_img,

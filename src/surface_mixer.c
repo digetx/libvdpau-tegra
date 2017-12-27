@@ -203,6 +203,7 @@ VdpStatus vdp_video_mixer_create(VdpDevice device,
     tegra_device *dev = get_device(device);
     tegra_mixer *mix;
     VdpVideoMixer i;
+    int ret;
 
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -239,6 +240,14 @@ VdpStatus vdp_video_mixer_create(VdpDevice device,
     pthread_mutex_unlock(&global_lock);
 
     if (i == MAX_MIXERS_NB || mix == NULL) {
+        return VDP_STATUS_RESOURCES;
+    }
+
+    ret = pthread_mutex_init(&mix->lock, NULL);
+    if (ret != 0) {
+        free(mix);
+        set_mixer(i, NULL);
+        ErrorMsg("pthread_mutex_init failed\n");
         return VDP_STATUS_RESOURCES;
     }
 
@@ -280,6 +289,8 @@ VdpStatus vdp_video_mixer_set_attribute_values(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    pthread_mutex_lock(&mix->lock);
+
     while (count--) {
         switch (attributes[count]) {
         case VDP_VIDEO_MIXER_ATTRIBUTE_CSC_MATRIX:
@@ -292,6 +303,8 @@ VdpStatus vdp_video_mixer_set_attribute_values(
             break;
         }
     }
+
+    pthread_mutex_unlock(&mix->lock);
 
     return VDP_STATUS_OK;
 }
@@ -409,6 +422,9 @@ VdpStatus vdp_video_mixer_render(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    pthread_mutex_lock(&mix->lock);
+    pthread_mutex_lock(&dest_surf->lock);
+
     shared_surface_kill_disp(dest_surf);
 
     if (destination_video_rect != NULL) {
@@ -476,6 +492,8 @@ VdpStatus vdp_video_mixer_render(
         if (background_source_rect) {
             ret = dynamic_alloc_surface_data(dest_surf);
             if (ret) {
+                pthread_mutex_unlock(&dest_surf->lock);
+                pthread_mutex_unlock(&mix->lock);
                 return VDP_STATUS_RESOURCES;
             }
 
@@ -498,6 +516,8 @@ VdpStatus vdp_video_mixer_render(
     if (draw_background && bg_surf) {
         ret = dynamic_alloc_surface_data(dest_surf);
         if (ret) {
+            pthread_mutex_unlock(&dest_surf->lock);
+            pthread_mutex_unlock(&mix->lock);
             return VDP_STATUS_RESOURCES;
         }
 
@@ -529,6 +549,8 @@ VdpStatus vdp_video_mixer_render(
         if (!shared) {
             ret = dynamic_alloc_surface_data(dest_surf);
             if (ret) {
+                pthread_mutex_unlock(&dest_surf->lock);
+                pthread_mutex_unlock(&mix->lock);
                 return VDP_STATUS_RESOURCES;
             }
 
@@ -562,6 +584,8 @@ VdpStatus vdp_video_mixer_render(
 
     while (layer_count--) {
         if (layers[layer_count].struct_version != VDP_LAYER_VERSION) {
+            pthread_mutex_unlock(&dest_surf->lock);
+            pthread_mutex_unlock(&mix->lock);
             return VDP_STATUS_INVALID_STRUCT_VERSION;
         }
 
@@ -574,6 +598,9 @@ VdpStatus vdp_video_mixer_render(
                                     NULL,
                                     VDP_OUTPUT_SURFACE_RENDER_ROTATE_0);
     }
+
+    pthread_mutex_unlock(&dest_surf->lock);
+    pthread_mutex_unlock(&mix->lock);
 
     return VDP_STATUS_OK;
 }

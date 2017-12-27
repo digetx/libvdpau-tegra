@@ -223,8 +223,11 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
     src_surf = get_surface(source_surface);
 
+    pthread_mutex_lock(&src_surf->lock);
+
     ret = shared_surface_transfer_video(dst_surf);
     if (ret) {
+        pthread_mutex_unlock(&src_surf->lock);
         return VDP_STATUS_RESOURCES;
     }
 
@@ -255,6 +258,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                                      dst_x0, dst_y0,
                                      dst_width, dst_height);
         if (ret == 0) {
+            pthread_mutex_unlock(&src_surf->lock);
             return VDP_STATUS_OK;
         }
 
@@ -267,11 +271,14 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
         assert(ret != 0);
 
+        pthread_mutex_unlock(&src_surf->lock);
+
         return VDP_STATUS_OK;
     }
 
     if (blend_state != NULL) {
         if (blend_state->struct_version != VDP_OUTPUT_SURFACE_RENDER_BLEND_STATE_VERSION) {
+            pthread_mutex_unlock(&src_surf->lock);
             return VDP_STATUS_INVALID_STRUCT_VERSION;
         }
     }
@@ -320,6 +327,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                                  src_width, src_height,
                                  dst_x0, dst_y0,
                                  dst_width, dst_height);
+        pthread_mutex_unlock(&src_surf->lock);
         return VDP_STATUS_OK;
     }
 
@@ -372,6 +380,8 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         ret = pixman_image_set_transform(src_pix, NULL);
         assert(ret != 0);
     }
+
+    pthread_mutex_unlock(&src_surf->lock);
 
     return VDP_STATUS_OK;
 }
