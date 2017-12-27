@@ -61,34 +61,9 @@ static XvImage * create_video_xv(tegra_surface *video)
     return xv_img;
 }
 
-static bool custom_csc(VdpCSCMatrix const *csc_matrix)
-{
-    int i, k;
-
-    if (memcmp(*csc_matrix, CSC_BT_601, sizeof(VdpCSCMatrix)) == 0 ||
-            memcmp(*csc_matrix, CSC_BT_709, sizeof(VdpCSCMatrix)) == 0)
-                return false;
-
-    for (i = 0; i < 3; i++)
-        for (k = 0; k < 3; k++)
-            if (fabs((*csc_matrix)[i][k] - CSC_BT_601[i][k]) > 0.01f)
-                goto check_709;
-
-    return false;
-
-    /* XXX: Tegra's CSC is hardcoded to BT601 in the kernel driver */
-check_709:
-    for (i = 0; i < 3; i++)
-        for (k = 0; k < 3; k++)
-            if (fabs((*csc_matrix)[i][k] - CSC_BT_709[i][k]) > 0.01f)
-                return true;
-
-    return false;
-}
-
 tegra_shared_surface *create_shared_surface(tegra_surface *disp,
                                             tegra_surface *video,
-                                            VdpCSCMatrix const *csc_matrix,
+                                            struct host1x_csc_params *csc,
                                             uint32_t src_x0,
                                             uint32_t src_y0,
                                             uint32_t src_width,
@@ -101,7 +76,7 @@ tegra_shared_surface *create_shared_surface(tegra_surface *disp,
     tegra_shared_surface *shared;
     int ret;
 
-    if (disp->data_dirty || custom_csc(csc_matrix)) {
+    if (disp->data_dirty) {
         return NULL;
     }
 
@@ -113,7 +88,7 @@ tegra_shared_surface *create_shared_surface(tegra_surface *disp,
     assert(disp->shared == NULL);
 
     atomic_set(&shared->refcnt, 1);
-    memcpy(&shared->csc_matrix, csc_matrix, sizeof(VdpCSCMatrix));
+    memcpy(&shared->csc, csc, sizeof(*csc));
 
     shared->xv_img = create_video_xv(video);
     shared->video = video;
@@ -238,7 +213,7 @@ int shared_surface_transfer_video(tegra_surface *disp)
     host1x_gr2d_surface_blit(video->dev->stream,
                              video->pixbuf,
                              disp->pixbuf,
-                             &shared->csc_matrix,
+                             &shared->csc,
                              shared->src_x0,
                              shared->src_y0,
                              shared->src_width,

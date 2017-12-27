@@ -315,7 +315,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         host1x_gr2d_surface_blit(dst_surf->dev->stream,
                                  src_surf->pixbuf,
                                  dst_surf->pixbuf,
-                                 NULL,
+                                 &csc_rgb_default,
                                  src_x0, src_y0,
                                  src_width, src_height,
                                  dst_x0, dst_y0,

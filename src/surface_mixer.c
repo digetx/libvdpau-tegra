@@ -19,6 +19,44 @@
 
 #include "vdpau_tegra.h"
 
+static bool custom_csc(VdpCSCMatrix const csc_matrix)
+{
+    int i, k;
+
+    if (memcmp(csc_matrix, CSC_BT_601, sizeof(VdpCSCMatrix)) == 0 ||
+            memcmp(csc_matrix, CSC_BT_709, sizeof(VdpCSCMatrix)) == 0)
+                return false;
+
+    for (i = 0; i < 3; i++)
+        for (k = 0; k < 3; k++)
+            if (fabs(csc_matrix[i][k] - CSC_BT_601[i][k]) > 0.01f)
+                goto check_709;
+
+    return false;
+
+    /* XXX: Tegra's CSC is hardcoded to BT601 in the kernel driver */
+check_709:
+    for (i = 0; i < 3; i++)
+        for (k = 0; k < 3; k++)
+            if (fabs(csc_matrix[i][k] - CSC_BT_709[i][k]) > 0.01f)
+                return true;
+
+    return false;
+}
+
+static void mixer_apply_vdp_csc(tegra_mixer *mix, VdpCSCMatrix const cscmat)
+{
+    mix->csc.yos = -16;
+    mix->csc.cvr = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[0][2], -3.98f, 3.98f) );
+    mix->csc.cub = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[2][1], -3.98f, 3.98f) );
+    mix->csc.cyx = FLOAT_TO_FIXED_s1_7( CLAMP(cscmat[0][0], -1.98f, 1.98f) );
+    mix->csc.cur = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[0][1], -3.98f, 3.98f) );
+    mix->csc.cug = FLOAT_TO_FIXED_s1_7( CLAMP(cscmat[1][1], -1.98f, 1.98f) );
+    mix->csc.cvb = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[2][2], -3.98f, 3.98f) );
+    mix->csc.cvg = FLOAT_TO_FIXED_s1_7( CLAMP(cscmat[1][2], -1.98f, 1.98f) );
+    mix->custom_csc = custom_csc(cscmat);
+}
+
 VdpStatus vdp_video_mixer_query_feature_support(VdpDevice device,
                                                 VdpVideoMixerFeature feature,
                                                 VdpBool *is_supported)
@@ -207,6 +245,8 @@ VdpStatus vdp_video_mixer_create(VdpDevice device,
     ref_device(dev);
     mix->dev = dev;
 
+    mixer_apply_vdp_csc(mix, CSC_BT_709);
+
     *mixer = i;
 
     return VDP_STATUS_OK;
@@ -243,8 +283,7 @@ VdpStatus vdp_video_mixer_set_attribute_values(
     while (count--) {
         switch (attributes[count]) {
         case VDP_VIDEO_MIXER_ATTRIBUTE_CSC_MATRIX:
-            memcpy(&mix->csc_matrix, attribute_values[count],
-                   sizeof(VdpCSCMatrix));
+            mixer_apply_vdp_csc(mix, attribute_values[count]);
             break;
 
         case VDP_VIDEO_MIXER_ATTRIBUTE_BACKGROUND_COLOR:
@@ -465,7 +504,7 @@ VdpStatus vdp_video_mixer_render(
         host1x_gr2d_surface_blit(mix->dev->stream,
                                  bg_surf->pixbuf,
                                  dest_surf->pixbuf,
-                                 &mix->csc_matrix,
+                                 &csc_rgb_default,
                                  bg_x0, bg_y0,
                                  bg_width, bg_height,
                                  0,
@@ -475,17 +514,18 @@ VdpStatus vdp_video_mixer_render(
     }
 
     if (!draw_background) {
-        shared = create_shared_surface(dest_surf,
-                                       video_surf,
-                                       &mix->csc_matrix,
-                                       src_vid_x0,
-                                       src_vid_y0,
-                                       src_vid_width,
-                                       src_vid_height,
-                                       dst_vid_x0,
-                                       dst_vid_y0,
-                                       dst_vid_width,
-                                       dst_vid_height);
+        if (!mix->custom_csc)
+            shared = create_shared_surface(dest_surf,
+                                           video_surf,
+                                           &mix->csc,
+                                           src_vid_x0,
+                                           src_vid_y0,
+                                           src_vid_width,
+                                           src_vid_height,
+                                           dst_vid_x0,
+                                           dst_vid_y0,
+                                           dst_vid_width,
+                                           dst_vid_height);
         if (!shared) {
             ret = dynamic_alloc_surface_data(dest_surf);
             if (ret) {
@@ -509,7 +549,7 @@ VdpStatus vdp_video_mixer_render(
         host1x_gr2d_surface_blit(mix->dev->stream,
                                  video_surf->pixbuf,
                                  dest_surf->pixbuf,
-                                 &mix->csc_matrix,
+                                 &mix->csc,
                                  src_vid_x0,
                                  src_vid_y0,
                                  src_vid_width,

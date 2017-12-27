@@ -25,6 +25,18 @@
 #ifndef HOST1X_H
 #define HOST1X_H
 
+#define FLOAT_TO_FIXED_6_12(fp) \
+    (((int32_t) (fp * 4096.0f + 0.5f)) & ((1 << 18) - 1))
+
+#define FLOAT_TO_FIXED_s2_7(fp) \
+    (((fp < 0.0f) << 9) | (((int32_t) (fabs(fp) * 128.0f)) & ((1 << 9) - 1)))
+
+#define FLOAT_TO_FIXED_s1_7(fp) \
+    (((fp < 0.0f) << 8) | (((int32_t) (fabs(fp) * 128.0f)) & ((1 << 8) - 1)))
+
+#define FLOAT_TO_FIXED_0_8(fp) \
+    (((int32_t) (fp * 256.0f + 0.5f)) & ((1 << 8) - 1))
+
 #define HOST1X_OPCODE_SETCL(offset, classid, mask) \
     ((0x0 << 28) | (((offset) & 0xfff) << 16) | (((classid) & 0x3ff) << 6) | ((mask) & 0x3f))
 #define HOST1X_OPCODE_INCR(offset, count) \
@@ -77,6 +89,14 @@ enum layout_format {
     PIX_BUF_LAYOUT_LINEAR,
     PIX_BUF_LAYOUT_TILED_16x16,
 };
+
+struct host1x_csc_params {
+    uint32_t yos, cvr, cub;
+    uint32_t cyx, cur, cug;
+    uint32_t cvb, cvg;
+};
+
+extern struct host1x_csc_params csc_rgb_default;
 
 struct host1x_pixelbuffer {
     union {
@@ -149,7 +169,7 @@ int host1x_gr2d_blit(struct tegra_stream *stream,
 int host1x_gr2d_surface_blit(struct tegra_stream *stream,
                              struct host1x_pixelbuffer *src,
                              struct host1x_pixelbuffer *dst,
-                             VdpCSCMatrix *cscmat,
+                             struct host1x_csc_params *csc,
                              unsigned int sx, unsigned int sy,
                              unsigned int src_width, unsigned int src_height,
                              unsigned int dx, unsigned int dy,

@@ -102,6 +102,9 @@
     fprintf(stderr, "%s:%d/%s(): " fmt, \
             __FILE__, __LINE__, __func__, ##args)
 
+#define CLAMP(_v, _vmin, _vmax) \
+    (((_v) < (_vmin) ? (_vmin) : (((_v) > (_vmax)) ? (_vmax) : (_v))))
+
 #define UNIFIED_BUFFER  0
 
 extern VdpCSCMatrix CSC_BT_601;
@@ -131,7 +134,7 @@ typedef struct tegra_shared_surface {
     atomic_t refcnt;
     struct tegra_surface *video;
     struct tegra_surface *disp;
-    VdpCSCMatrix csc_matrix;
+    struct host1x_csc_params csc;
     uint32_t src_x0, src_y0, src_width, src_height;
     uint32_t dst_x0, dst_y0, dst_width, dst_height;
     XvImage *xv_img;
@@ -194,9 +197,10 @@ typedef struct tegra_decoder {
 } tegra_decoder;
 
 typedef struct tegra_mixer {
-    VdpCSCMatrix csc_matrix;
+    struct host1x_csc_params csc;
     VdpColor bg_color;
     tegra_device *dev;
+    bool custom_csc;
 } tegra_mixer;
 
 typedef struct tegra_pqt {
@@ -294,7 +298,7 @@ int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type);
 
 tegra_shared_surface *create_shared_surface(tegra_surface *disp,
                                             tegra_surface *video,
-                                            VdpCSCMatrix const *csc_matrix,
+                                            struct host1x_csc_params *csc,
                                             uint32_t src_x0,
                                             uint32_t src_y0,
                                             uint32_t src_width,
