@@ -26,16 +26,21 @@
 #define FLOAT_TO_FIXED_6_12(fp) \
     (((int32_t) (fp * 4096.0f + 0.5f)) & ((1 << 18) - 1))
 
-#define FLOAT_TO_FIXED_2_7(fp) \
-    ((((int32_t) (fp * 128.0f)) & 0x300) | \
-        (((int32_t) (fabs(fp) * 128.0f + 0.5f)) & ((1 << 8) - 1)))
+#define FLOAT_TO_FIXED_s2_7(fp) \
+    (((fp < 0.0f) << 9) | (((int32_t) (fabs(fp) * 128.0f)) & ((1 << 9) - 1)))
 
-#define FLOAT_TO_FIXED_1_7(fp) \
-    ((((int32_t) (fp * 128.0f)) & 0x100) | \
-        (((int32_t) (fabs(fp) * 128.0f + 0.5f)) & ((1 << 8) - 1)))
+#define FLOAT_TO_FIXED_s1_7(fp) \
+    (((fp < 0.0f) << 8) | (((int32_t) (fabs(fp) * 128.0f)) & ((1 << 8) - 1)))
 
 #define FLOAT_TO_FIXED_0_8(fp) \
     (((int32_t) (fp * 256.0f + 0.5f)) & ((1 << 8) - 1))
+
+static float fclamp(float f, float min, float max)
+{
+    if (f < min) return min;
+    if (f > max) return max;
+    return f;
+}
 
 int host1x_gr2d_clear(struct tegra_stream *stream,
                       struct host1x_pixelbuffer *pixbuf,
@@ -483,29 +488,29 @@ coords_check:
         tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x15, 0x787));
 
         tegra_stream_push(stream,
-                /* cvr */ FLOAT_TO_FIXED_2_7(1.0f) << 12 |
-                /* cub */ FLOAT_TO_FIXED_2_7(1.0f)); /* cscfirst */
+                /* cvr */ FLOAT_TO_FIXED_s2_7(1.0f) << 12 |
+                /* cub */ FLOAT_TO_FIXED_s2_7(1.0f)); /* cscfirst */
         tegra_stream_push(stream,
-                /* cyx */ FLOAT_TO_FIXED_1_7(1.0f) << 24 |
-                /* cur */ FLOAT_TO_FIXED_2_7(0.0f) << 12 |
-                /* cug */ FLOAT_TO_FIXED_1_7(0.0f)); /* cscsecond */
+                /* cyx */ FLOAT_TO_FIXED_s1_7(1.0f) << 24 |
+                /* cur */ FLOAT_TO_FIXED_s2_7(0.0f) << 12 |
+                /* cug */ FLOAT_TO_FIXED_s1_7(0.0f)); /* cscsecond */
         tegra_stream_push(stream,
-                /* cvb */ FLOAT_TO_FIXED_2_7(0.0f) << 16 |
-                /* cvg */ FLOAT_TO_FIXED_1_7(0.0f)); /* cscthird */
+                /* cvb */ FLOAT_TO_FIXED_s2_7(0.0f) << 16 |
+                /* cvg */ FLOAT_TO_FIXED_s1_7(0.0f)); /* cscthird */
     } else {
         tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x15, 0x7E7));
 
         tegra_stream_push(stream,
                 /* yos */ (-16) << 24 |
-                /* cvr */ FLOAT_TO_FIXED_2_7((*cscmat)[0][2]) << 12 |
-                /* cub */ FLOAT_TO_FIXED_2_7((*cscmat)[2][1])); /* cscfirst */
+                /* cvr */ FLOAT_TO_FIXED_s2_7( fclamp((*cscmat)[0][2], -3.98f, 3.98f) ) << 12 |
+                /* cub */ FLOAT_TO_FIXED_s2_7( fclamp((*cscmat)[2][1], -3.98f, 3.98f) )); /* cscfirst */
         tegra_stream_push(stream,
-                /* cyx */ FLOAT_TO_FIXED_1_7((*cscmat)[0][0]) << 24 |
-                /* cur */ FLOAT_TO_FIXED_2_7((*cscmat)[0][1]) << 12 |
-                /* cug */ FLOAT_TO_FIXED_1_7((*cscmat)[1][1])); /* cscsecond */
+                /* cyx */ FLOAT_TO_FIXED_s1_7( fclamp((*cscmat)[0][0], -1.98f, 1.98f) ) << 24 |
+                /* cur */ FLOAT_TO_FIXED_s2_7( fclamp((*cscmat)[0][1], -3.98f, 3.98f) ) << 12 |
+                /* cug */ FLOAT_TO_FIXED_s1_7( fclamp((*cscmat)[1][1], -1.98f, 1.98f) )); /* cscsecond */
         tegra_stream_push(stream,
-                /* cvb */ FLOAT_TO_FIXED_2_7((*cscmat)[2][2]) << 16 |
-                /* cvg */ FLOAT_TO_FIXED_1_7((*cscmat)[1][2])); /* cscthird */
+                /* cvb */ FLOAT_TO_FIXED_s2_7( fclamp((*cscmat)[2][2], -3.98f, 3.98f) ) << 16 |
+                /* cvg */ FLOAT_TO_FIXED_s1_7( fclamp((*cscmat)[1][2], -1.98f, 1.98f) )); /* cscthird */
 
         tegra_stream_push_reloc(stream, src->bos[1], src->bo_offset[1]); /* uba */
         tegra_stream_push_reloc(stream, src->bos[2], src->bo_offset[2]); /* vba */
