@@ -1,6 +1,6 @@
 # About
 
-This is a VDPAU backend driver for the NVIDIA Tegra20 SoC's.
+This is a VDPAU backend driver for the NVIDIA Tegra SoC's.
 
 # Requirements:
 
@@ -14,10 +14,7 @@ Mandatory:
 
 Optional:
 * mesa (https://github.com/grate-driver/mesa)
-* Linux kernel Video Decoder Engine (VDE) driver, cherry-pick these patches from https://github.com/grate-driver/linux to your kernel:
-
-   * staging: Introduce NVIDIA Tegra20 video decoder driver
-   * ARM: dts: tegra20: Add video decoder node
+* Linux kernel 4.16+ (https://www.kernel.org/), in kernel config enable "staging/media" drivers and select "NVIDIA Tegra Video Decoder Engine driver" in the kernel config
 
 The VDE linux kernel driver is optional, it is required for HW accelerated video decoding. Currently VDE driver
 supports CAVLC H.264 videos only. The accelerated video output works without the VDE driver.
