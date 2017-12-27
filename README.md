@@ -14,7 +14,7 @@ Mandatory:
 
 Optional:
 * mesa (https://github.com/grate-driver/mesa)
-* Linux kernel 4.16+ (https://www.kernel.org/), in kernel config enable "staging/media" drivers and select "NVIDIA Tegra Video Decoder Engine driver" in the kernel config
+* Linux kernel 4.16+ (https://www.kernel.org/), enable "staging/media" drivers and select "NVIDIA Tegra Video Decoder Engine driver" in the kernel config
 
 The VDE linux kernel driver is optional, it is required for HW accelerated video decoding. Currently VDE driver
 supports CAVLC H.264 videos only. The accelerated video output works without the VDE driver.
