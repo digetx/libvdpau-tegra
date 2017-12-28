@@ -175,8 +175,6 @@ typedef struct tegra_surface {
     pthread_cond_t idle_cond;
     pthread_mutex_t lock;
 
-    bool idle_hack;
-
     uint32_t surface_id;
 
     tegra_shared_surface *shared;

@@ -407,11 +407,9 @@ VdpStatus vdp_presentation_queue_display(
     ref_surface(surf);
     surf->disp_width  = clip_width  ?: surf->width;
     surf->disp_height = clip_height ?: surf->height;
-    surf->idle_hack = false;
 
     if (earliest_presentation_time == 0) {
         pqt_display_surface(pqt, surf);
-        surf->idle_hack = true;
 
         pthread_mutex_unlock(&surf->lock);
         pthread_mutex_unlock(&pq->lock);
@@ -456,8 +454,7 @@ VdpStatus vdp_presentation_queue_block_until_surface_idle(
 
     pthread_mutex_lock(&surf->lock);
 
-    if (surf->idle_hack ||
-        surf->status == VDP_PRESENTATION_QUEUE_STATUS_IDLE) {
+    if (surf->status == VDP_PRESENTATION_QUEUE_STATUS_IDLE) {
         *first_presentation_time = surf->first_presentation_time;
         ret = VDP_STATUS_OK;
         goto unlock;
