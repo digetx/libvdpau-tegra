@@ -536,10 +536,17 @@ VdpStatus vdp_video_mixer_render(
                        dst_vid_height < bg_height ||
                        dst_vid_width < bg_width);
 
-    if (draw_background && !bg_surf) {
+    if (bg_surf) {
+        pthread_mutex_lock(&bg_surf->lock);
+    }
+
+    if (draw_background && (!bg_surf || !bg_surf->data_allocated)) {
         if (background_source_rect) {
             ret = dynamic_alloc_surface_data(dest_surf);
             if (ret) {
+                if (bg_surf) {
+                    pthread_mutex_unlock(&bg_surf->lock);
+                }
                 pthread_mutex_unlock(&dest_surf->lock);
                 pthread_mutex_unlock(&mix->lock);
                 put_mixer(mix);
@@ -565,9 +572,10 @@ VdpStatus vdp_video_mixer_render(
         }
     }
 
-    if (draw_background && bg_surf) {
+    if (draw_background && (bg_surf && bg_surf->data_allocated)) {
         ret = dynamic_alloc_surface_data(dest_surf);
         if (ret) {
+            pthread_mutex_unlock(&bg_surf->lock);
             pthread_mutex_unlock(&dest_surf->lock);
             pthread_mutex_unlock(&mix->lock);
             put_mixer(mix);
@@ -587,6 +595,10 @@ VdpStatus vdp_video_mixer_render(
                                  0,
                                  dest_surf->width,
                                  dest_surf->height);
+    }
+
+    if (bg_surf) {
+        pthread_mutex_unlock(&bg_surf->lock);
     }
 
     if (!draw_background) {
