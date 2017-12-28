@@ -447,9 +447,6 @@ VdpStatus unref_surface(tegra_surface *surf)
     }
 
     pthread_mutex_lock(&surf->lock);
-    if (surf->flags & SURFACE_OUTPUT) {
-        shared_surface_kill_disp(surf);
-    }
     dynamic_release_surface_data(surf);
     unref_device(surf->dev);
     pthread_mutex_unlock(&surf->lock);
@@ -464,6 +461,9 @@ VdpStatus unref_surface(tegra_surface *surf)
 VdpStatus destroy_surface(tegra_surface *surf)
 {
     pthread_mutex_lock(&surf->lock);
+    if (surf->flags & SURFACE_OUTPUT) {
+        shared_surface_kill_disp(surf);
+    }
     surf->earliest_presentation_time = 0;
     pthread_mutex_unlock(&surf->lock);
 
