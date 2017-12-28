@@ -364,6 +364,7 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     int slice_type_mod                  = slice_type % 5;
     int frame_num_wrap                  = (info->frame_num == 0);
     int refs_num                        = 0;
+    int err;
 
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -431,7 +432,12 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     ctx.num_ref_idx_l1_active_minus1        = info->num_ref_idx_l1_active_minus1;
     ctx.reserved                            = 0;
 
-    if (ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264, &ctx) != 0) {
+repeat:
+    err = ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264, &ctx);
+    if (err != 0) {
+        if (errno == EINTR || errno == EAGAIN) {
+            goto repeat;
+        }
         return VDP_STATUS_ERROR;
     }
 
