@@ -208,8 +208,6 @@ int shared_surface_transfer_video(tegra_surface *disp)
     tegra_surface *video;
     int ret;
 
-    assert(disp->flags & SURFACE_OUTPUT);
-
     pthread_mutex_lock(&disp->lock);
 
     pthread_mutex_lock(&shared_lock);
@@ -233,6 +231,8 @@ int shared_surface_transfer_video(tegra_surface *disp)
         pthread_mutex_unlock(&disp->lock);
         return 0;
     }
+
+    assert(disp->flags & SURFACE_OUTPUT);
 
     if (disp->set_bg) {
         host1x_gr2d_clear_rect_clipped(disp->dev->stream,
