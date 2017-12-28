@@ -231,14 +231,15 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    assert(dst_surf->idle_hack ||
-           dst_surf->status == VDP_PRESENTATION_QUEUE_STATUS_IDLE);
-
-    pthread_mutex_lock(&src_surf->lock);
+    ret = shared_surface_transfer_video(src_surf);
+    if (ret) {
+        put_surface(dst_surf);
+        put_surface(src_surf);
+        return VDP_STATUS_RESOURCES;
+    }
 
     ret = shared_surface_transfer_video(dst_surf);
     if (ret) {
-        pthread_mutex_unlock(&src_surf->lock);
         put_surface(dst_surf);
         put_surface(src_surf);
         return VDP_STATUS_RESOURCES;
@@ -271,7 +272,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                                      dst_x0, dst_y0,
                                      dst_width, dst_height);
         if (ret == 0) {
-            pthread_mutex_unlock(&src_surf->lock);
             put_surface(dst_surf);
             put_surface(src_surf);
             return VDP_STATUS_OK;
@@ -286,8 +286,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
         assert(ret != 0);
 
-        pthread_mutex_unlock(&src_surf->lock);
-
         put_surface(dst_surf);
         put_surface(src_surf);
 
@@ -296,7 +294,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
     if (blend_state != NULL) {
         if (blend_state->struct_version != VDP_OUTPUT_SURFACE_RENDER_BLEND_STATE_VERSION) {
-            pthread_mutex_unlock(&src_surf->lock);
             put_surface(dst_surf);
             put_surface(src_surf);
             return VDP_STATUS_INVALID_STRUCT_VERSION;
@@ -347,7 +344,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                                  src_width, src_height,
                                  dst_x0, dst_y0,
                                  dst_width, dst_height);
-        pthread_mutex_unlock(&src_surf->lock);
         put_surface(dst_surf);
         put_surface(src_surf);
         return VDP_STATUS_OK;
@@ -402,8 +398,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         ret = pixman_image_set_transform(src_pix, NULL);
         assert(ret != 0);
     }
-
-    pthread_mutex_unlock(&src_surf->lock);
 
     put_surface(dst_surf);
     put_surface(src_surf);
