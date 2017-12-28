@@ -207,6 +207,7 @@ static int get_refs_sorted(struct tegra_vde_h264_frame *dpb_frames,
 
         if (list_head == NULL) {
             list_head = &nodes[i];
+            put_surface(surf);
             continue;
         }
 
@@ -250,6 +251,8 @@ insert_node:
             nodes[i].next = itr;
             break;
         }
+
+        put_surface(surf);
     }
 
     assert(refs_num != 0);
@@ -291,6 +294,8 @@ static int get_refs_dpb_order(struct tegra_vde_h264_frame *dpb_frames,
         }
 
         dpb_frames[1 + refs_num++] = *surf->frame;
+
+        put_surface(surf);
     }
 
     assert(refs_num != 0);
@@ -486,13 +491,14 @@ VdpStatus vdp_decoder_create(VdpDevice device,
     case VDP_DECODER_PROFILE_H264_HIGH: /* MPlayer compatibility */
         break;
     default:
+        put_device(dev);
         return VDP_STATUS_INVALID_DECODER_PROFILE;
     }
 
     pthread_mutex_lock(&global_lock);
 
     for (i = 0; i < MAX_DECODERS_NB; i++) {
-        dec = get_decoder(i);
+        dec = __get_decoder(i);
 
         if (dec == NULL) {
             dec = calloc(1, sizeof(tegra_decoder));
@@ -504,15 +510,37 @@ VdpStatus vdp_decoder_create(VdpDevice device,
     pthread_mutex_unlock(&global_lock);
 
     if (i == MAX_SURFACES_NB || dec == NULL) {
+        put_device(dev);
         return VDP_STATUS_RESOURCES;
     }
 
+    atomic_set(&dec->refcnt, 1);
+    ref_device(dev);
     dec->dev = dev;
     dec->width = ALIGN(width, 16);
     dec->height = ALIGN(height, 16);
     dec->is_baseline_profile = is_baseline_profile;
 
     *decoder = i;
+
+    put_device(dev);
+
+    return VDP_STATUS_OK;
+}
+
+void ref_decoder(tegra_decoder *dec)
+{
+    atomic_inc(&dec->refcnt);
+}
+
+VdpStatus unref_decoder(tegra_decoder *dec)
+{
+    if (!atomic_dec_and_test(&dec->refcnt)) {
+        return VDP_STATUS_OK;
+    }
+
+    unref_device(dec->dev);
+    free(dec);
 
     return VDP_STATUS_OK;
 }
@@ -526,7 +554,9 @@ VdpStatus vdp_decoder_destroy(VdpDecoder decoder)
     }
 
     set_decoder(decoder, NULL);
-    free(dec);
+    put_decoder(dec);
+
+    unref_decoder(dec);
 
     return VDP_STATUS_OK;
 }
@@ -551,13 +581,15 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
                              VdpBitstreamBuffer const *bufs)
 {
     tegra_decoder *dec = get_decoder(decoder);
-    tegra_surface *surf = get_surface(target);
+    tegra_surface *orig, *surf = get_surface(target);
     struct drm_tegra_bo *bitstream_bo;
     bitstream_reader bitstream_reader;
     int bitstream_data_fd;
     VdpStatus ret;
 
     if (dec == NULL || surf == NULL) {
+        put_surface(surf);
+        put_decoder(dec);
         return VDP_STATUS_INVALID_HANDLE;
     }
 
@@ -566,10 +598,18 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
                                    &bitstream_reader);
 
     if (ret != VDP_STATUS_OK) {
+        put_surface(surf);
+        put_decoder(dec);
         return ret;
     }
 
+    orig = surf;
     surf = shared_surface_swap_video(surf);
+
+    if (surf != orig) {
+        put_surface(orig);
+        ref_surface(surf);
+    }
 
     ret = tegra_decode_h264(dec, surf, picture_info,
                             bitstream_data_fd, &bitstream_reader);
@@ -577,11 +617,16 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
     free_data(bitstream_bo, bitstream_data_fd);
 
     if (ret != VDP_STATUS_OK) {
+        put_surface(surf);
+        put_decoder(dec);
         return ret;
     }
 
     surf->flags |= SURFACE_YUV_UNCONVERTED;
     surf->flags |= SURFACE_DATA_NEEDS_SYNC;
+
+    put_surface(surf);
+    put_decoder(dec);
 
     return VDP_STATUS_OK;
 }

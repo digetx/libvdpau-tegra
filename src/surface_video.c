@@ -36,6 +36,8 @@ VdpStatus vdp_video_surface_query_capabilities(
     *max_width = INT_MAX;
     *max_height = INT_MAX;
 
+    put_device(dev);
+
     return VDP_STATUS_OK;
 }
 
@@ -53,6 +55,8 @@ VdpStatus vdp_video_surface_query_get_put_bits_y_cb_cr_capabilities(
 
     *is_supported = (bits_ycbcr_format == VDP_YCBCR_FORMAT_YV12);
 
+    put_device(dev);
+
     return VDP_STATUS_OK;
 }
 
@@ -68,14 +72,18 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
     }
 
     if (chroma_type != VDP_CHROMA_TYPE_420) {
+        put_device(dev);
         return VDP_STATUS_INVALID_CHROMA_TYPE;
     }
 
     *surface = create_surface(dev, width, height, ~0, 0, 1);
 
     if (*surface == VDP_INVALID_HANDLE) {
+        put_device(dev);
         return VDP_STATUS_RESOURCES;
     }
+
+    put_device(dev);
 
     return VDP_STATUS_OK;
 }
@@ -89,7 +97,7 @@ VdpStatus vdp_video_surface_get_parameters(VdpVideoSurface surface,
                                            VdpChromaType *chroma_type,
                                            uint32_t *width, uint32_t *height)
 {
-    tegra_surface *surf = get_surface_ref(surface);
+    tegra_surface *surf = get_surface(surface);
 
     if (surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -109,7 +117,7 @@ VdpStatus vdp_video_surface_get_parameters(VdpVideoSurface surface,
         *height = surf->height;
     }
 
-    unref_surface(surf);
+    put_surface(surf);
 
     return VDP_STATUS_OK;
 }
@@ -120,7 +128,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
                                         void *const *destination_data,
                                         uint32_t const *destination_pitches)
 {
-    tegra_surface *surf = get_surface_ref(surface);
+    tegra_surface *surf = get_surface(surface);
     void *dst_y  = destination_data[0];
     void *dst_cr = destination_data[1];
     void *dst_cb = destination_data[2];
@@ -140,7 +148,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
         break;
     default:
         pthread_mutex_unlock(&surf->lock);
-        unref_surface(surf);
+        put_surface(surf);
         return VDP_STATUS_NO_IMPLEMENTATION;
     }
 
@@ -148,7 +156,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
 
     if (ret) {
         pthread_mutex_unlock(&surf->lock);
-        unref_surface(surf);
+        put_surface(surf);
         return ret;
     }
 
@@ -186,14 +194,14 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
 
     if (ret) {
         pthread_mutex_unlock(&surf->lock);
-        unref_surface(surf);
+        put_surface(surf);
         return ret;
     }
 
     surf->flags &= ~SURFACE_DATA_NEEDS_SYNC;
 
     pthread_mutex_unlock(&surf->lock);
-    unref_surface(surf);
+    put_surface(surf);
 
     return VDP_STATUS_OK;
 }
@@ -204,7 +212,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
                                             void const *const *source_data,
                                             uint32_t const *source_pitches)
 {
-    tegra_surface *surf, *orig = get_surface_ref(surface);
+    tegra_surface *surf, *orig = get_surface(surface);
     void *src_y  = (void *)source_data[0];
     void *src_cr = (void *)source_data[1];
     void *src_cb = (void *)source_data[2];
@@ -221,21 +229,21 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
     case VDP_YCBCR_FORMAT_YV12:
         break;
     default:
-        unref_surface(orig);
+        put_surface(orig);
         return VDP_STATUS_NO_IMPLEMENTATION;
     }
 
     surf = shared_surface_swap_video(orig);
 
     if (orig != surf) {
-        unref_surface(orig);
+        put_surface(orig);
         ref_surface(surf);
     }
 
     ret = sync_video_frame_dmabufs(surf, WRITE_START);
 
     if (ret) {
-        unref_surface(surf);
+        put_surface(surf);
         return ret;
     }
 
@@ -274,14 +282,14 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
     ret = sync_video_frame_dmabufs(surf, WRITE_END);
 
     if (ret) {
-        unref_surface(surf);
+        put_surface(surf);
         return ret;
     }
 
     surf->flags &= ~SURFACE_DATA_NEEDS_SYNC;
     surf->flags |= SURFACE_YUV_UNCONVERTED;
 
-    unref_surface(surf);
+    put_surface(surf);
 
     return VDP_STATUS_OK;
 }

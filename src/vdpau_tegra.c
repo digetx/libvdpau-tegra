@@ -40,23 +40,53 @@ VdpCSCMatrix CSC_BT_709 = {
     { 1.164384f, 2.112402f, 0.000000f },
 };
 
-tegra_device * get_device(VdpDevice device)
-{
-    if (device >= MAX_DEVICES_NB ) {
-        ErrorMsg("Invalid handle %u\n", device);
-        return NULL;
-    }
-
-    return tegra_devices[device];
-}
-
-tegra_decoder * get_decoder(VdpDecoder decoder)
+tegra_decoder * __get_decoder(VdpDecoder decoder)
 {
     if (decoder >= MAX_DECODERS_NB) {
         return NULL;
     }
 
     return tegra_decoders[decoder];
+}
+
+tegra_device * get_device(VdpDevice device)
+{
+    tegra_device *dev = NULL;
+
+    pthread_mutex_lock(&global_lock);
+
+    if (device < MAX_DEVICES_NB) {
+        dev = tegra_devices[device];
+
+        if (dev) {
+            atomic_inc(&dev->refcnt);
+        }
+    } else {
+        ErrorMsg("Invalid handle %u\n", device);
+    }
+
+    pthread_mutex_unlock(&global_lock);
+
+    return dev;
+}
+
+tegra_decoder * get_decoder(VdpDecoder decoder)
+{
+    tegra_decoder *dec = NULL;
+
+    pthread_mutex_lock(&global_lock);
+
+    if (decoder < MAX_DECODERS_NB) {
+        dec = tegra_decoders[decoder];
+
+        if (dec) {
+            atomic_inc(&dec->refcnt);
+        }
+    }
+
+    pthread_mutex_unlock(&global_lock);
+
+    return dec;
 }
 
 void set_decoder(VdpDecoder decoder, tegra_decoder *dec)
@@ -72,13 +102,32 @@ void set_decoder(VdpDecoder decoder, tegra_decoder *dec)
     tegra_decoders[decoder] = dec;
 }
 
-tegra_mixer * get_mixer(VdpVideoMixer mixer)
+tegra_mixer * __get_mixer(VdpVideoMixer mixer)
 {
     if (mixer >= MAX_MIXERS_NB) {
         return NULL;
     }
 
     return tegra_mixers[mixer];
+}
+
+tegra_mixer * get_mixer(VdpVideoMixer mixer)
+{
+    tegra_mixer *mix = NULL;
+
+    pthread_mutex_lock(&global_lock);
+
+    if (mixer < MAX_MIXERS_NB) {
+        mix = tegra_mixers[mixer];
+
+        if (mix) {
+            atomic_inc(&mix->refcnt);
+        }
+    }
+
+    pthread_mutex_unlock(&global_lock);
+
+    return mix;
 }
 
 void set_mixer(VdpVideoMixer mixer, tegra_mixer *mix)
@@ -94,7 +143,7 @@ void set_mixer(VdpVideoMixer mixer, tegra_mixer *mix)
     tegra_mixers[mixer] = mix;
 }
 
-tegra_surface * get_surface(VdpBitmapSurface surface)
+tegra_surface * __get_surface(VdpBitmapSurface surface)
 {
     if (surface >= MAX_SURFACES_NB) {
         return NULL;
@@ -103,15 +152,18 @@ tegra_surface * get_surface(VdpBitmapSurface surface)
     return tegra_surfaces[surface];
 }
 
-tegra_surface * get_surface_ref(VdpBitmapSurface surface)
+tegra_surface * get_surface(VdpBitmapSurface surface)
 {
-    tegra_surface *surf;
+    tegra_surface *surf = NULL;
 
     pthread_mutex_lock(&global_lock);
 
-    surf = get_surface(surface);
-    if (surf) {
-        ref_surface(surf);
+    if (surface < MAX_SURFACES_NB) {
+        surf = tegra_surfaces[surface];
+
+        if (surf) {
+            atomic_inc(&surf->refcnt);
+        }
     }
 
     pthread_mutex_unlock(&global_lock);
@@ -141,18 +193,38 @@ void replace_surface(tegra_surface *old_surf, tegra_surface *new_surf)
     if (old_surf != new_surf) {
         assert(tegra_surfaces[old_surf->surface_id] == old_surf);
         new_surf->surface_id = old_surf->surface_id;
+        old_surf->surface_id = MAX_SURFACES_NB;
 
         tegra_surfaces[new_surf->surface_id] = new_surf;
     }
 }
 
-tegra_pqt * get_presentation_queue_target(VdpPresentationQueueTarget target)
+tegra_pqt * __get_presentation_queue_target(VdpPresentationQueueTarget target)
 {
     if (target >= MAX_PRESENTATION_QUEUE_TARGETS_NB) {
         return NULL;
     }
 
     return tegra_pqts[target];
+}
+
+tegra_pqt * get_presentation_queue_target(VdpPresentationQueueTarget target)
+{
+    tegra_pqt *pqt = NULL;
+
+    pthread_mutex_lock(&global_lock);
+
+    if (target < MAX_PRESENTATION_QUEUE_TARGETS_NB) {
+        pqt = tegra_pqts[target];
+
+        if (pqt) {
+            atomic_inc(&pqt->refcnt);
+        }
+    }
+
+    pthread_mutex_unlock(&global_lock);
+
+    return pqt;
 }
 
 void set_presentation_queue_target(VdpPresentationQueueTarget target,
@@ -169,13 +241,32 @@ void set_presentation_queue_target(VdpPresentationQueueTarget target,
     tegra_pqts[target] = pqt;
 }
 
-tegra_pq * get_presentation_queue(VdpPresentationQueue presentation_queue)
+tegra_pq * __get_presentation_queue(VdpPresentationQueue presentation_queue)
 {
     if (presentation_queue >= MAX_PRESENTATION_QUEUES_NB) {
         return NULL;
     }
 
     return tegra_pqs[presentation_queue];
+}
+
+tegra_pq * get_presentation_queue(VdpPresentationQueue presentation_queue)
+{
+    tegra_pq *pq = NULL;
+
+    pthread_mutex_lock(&global_lock);
+
+    if (presentation_queue < MAX_PRESENTATION_QUEUES_NB) {
+        pq = tegra_pqs[presentation_queue];
+
+        if (pq) {
+            atomic_inc(&pq->refcnt);
+        }
+    }
+
+    pthread_mutex_unlock(&global_lock);
+
+    return pq;
 }
 
 void set_presentation_queue(VdpPresentationQueue presentation_queue,
@@ -435,6 +526,7 @@ VdpStatus vdp_device_destroy(VdpDevice device)
     }
 
     tegra_devices[device] = NULL;
+    put_device(dev);
 
     return unref_device(dev);
 }

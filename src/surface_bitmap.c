@@ -45,6 +45,8 @@ VdpStatus vdp_bitmap_surface_query_capabilities(
     *max_width = INT_MAX;
     *max_height = INT_MAX;
 
+    put_device(dev);
+
     return VDP_STATUS_OK;
 }
 
@@ -65,14 +67,18 @@ VdpStatus vdp_bitmap_surface_create(VdpDevice device,
     case VDP_RGBA_FORMAT_B8G8R8A8:
         break;
     default:
+        put_device(dev);
         return VDP_STATUS_INVALID_RGBA_FORMAT;
     }
 
     *surface = create_surface(dev, width, height, rgba_format, 0, 0);
 
     if (*surface == VDP_INVALID_HANDLE) {
+        put_device(dev);
         return VDP_STATUS_RESOURCES;
     }
+
+    put_device(dev);
 
     return VDP_STATUS_OK;
 }
@@ -85,7 +91,7 @@ VdpStatus vdp_bitmap_surface_destroy(VdpBitmapSurface surface)
         return VDP_INVALID_HANDLE;
     }
 
-    set_surface(surface, NULL);
+    put_surface(surf);
 
     return destroy_surface(surf);
 }
@@ -105,6 +111,8 @@ VdpStatus vdp_bitmap_surface_get_parameters(VdpBitmapSurface surface,
     *width = surf->width;
     *height = surf->height;
     *frequently_accessed = VDP_FALSE;
+
+    put_surface(surf);
 
     return VDP_STATUS_OK;
 }
@@ -133,6 +141,7 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
         err = shared_surface_transfer_video(surf);
         if (err) {
                 pthread_mutex_unlock(&surf->lock);
+                put_surface(surf);
                 return err;
         }
 
@@ -170,6 +179,8 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
     host1x_pixelbuffer_check_guard(surf->pixbuf);
 
     pthread_mutex_unlock(&surf->lock);
+
+    put_surface(surf);
 
     return VDP_STATUS_OK;
 }

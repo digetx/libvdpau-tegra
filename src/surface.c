@@ -24,7 +24,7 @@ static uint32_t get_unused_surface_id(void)
     uint32_t id;
 
     for (id = 0; id < MAX_SURFACES_NB; id++) {
-        if (get_surface(id) == NULL) {
+        if (__get_surface(id) == NULL) {
             break;
         }
     }
@@ -454,6 +454,7 @@ VdpStatus unref_surface(tegra_surface *surf)
     unref_device(surf->dev);
     pthread_mutex_unlock(&surf->lock);
 
+    set_surface(surf->surface_id, NULL);
     free(surf->frame);
     free(surf);
 
@@ -466,7 +467,9 @@ VdpStatus destroy_surface(tegra_surface *surf)
     surf->earliest_presentation_time = 0;
     pthread_mutex_unlock(&surf->lock);
 
-    return unref_surface(surf);
+    unref_surface(surf);
+
+    return VDP_STATUS_OK;
 }
 
 int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type)

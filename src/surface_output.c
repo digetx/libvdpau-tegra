@@ -46,6 +46,8 @@ VdpStatus vdp_output_surface_query_get_put_bits_native_capabilities(
 
     *is_supported = VDP_FALSE;
 
+    put_device(dev);
+
     return VDP_STATUS_OK;
 }
 
@@ -64,6 +66,8 @@ VdpStatus vdp_output_surface_query_put_bits_indexed_capabilities(
 
     *is_supported = VDP_FALSE;
 
+    put_device(dev);
+
     return VDP_STATUS_OK;
 }
 
@@ -80,6 +84,8 @@ VdpStatus vdp_output_surface_query_put_bits_y_cb_cr_capabilities(
     }
 
     *is_supported = VDP_FALSE;
+
+    put_device(dev);
 
     return VDP_STATUS_OK;
 }
@@ -100,14 +106,18 @@ VdpStatus vdp_output_surface_create(VdpDevice device,
     case VDP_RGBA_FORMAT_B8G8R8A8:
         break;
     default:
+        put_device(dev);
         return VDP_STATUS_INVALID_RGBA_FORMAT;
     }
 
     *surface = create_surface(dev, width, height, rgba_format, 1, 0);
 
     if (*surface == VDP_INVALID_HANDLE) {
+        put_device(dev);
         return VDP_STATUS_RESOURCES;
     }
+
+    put_device(dev);
 
     return VDP_STATUS_OK;
 }
@@ -121,12 +131,7 @@ VdpStatus vdp_output_surface_get_parameters(VdpOutputSurface surface,
                                             VdpRGBAFormat *rgba_format,
                                             uint32_t *width, uint32_t *height)
 {
-    tegra_surface *surf = get_surface(surface);
     VdpBool stub;
-
-    if (surf == NULL) {
-        return VDP_STATUS_INVALID_HANDLE;
-    }
 
     return vdp_bitmap_surface_get_parameters(surface, rgba_format,
                                              width, height, &stub);
@@ -142,6 +147,8 @@ VdpStatus vdp_output_surface_get_bits_native(VdpOutputSurface surface,
     if (surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
+
+    put_surface(surf);
 
     return VDP_STATUS_NO_IMPLEMENTATION;
 }
@@ -170,6 +177,8 @@ VdpStatus vdp_output_surface_put_bits_indexed(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    put_surface(surf);
+
     return VDP_STATUS_NO_IMPLEMENTATION;
 }
 
@@ -187,6 +196,8 @@ VdpStatus vdp_output_surface_put_bits_y_cb_cr(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    put_surface(surf);
+
     return VDP_STATUS_NO_IMPLEMENTATION;
 }
 
@@ -200,7 +211,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                             uint32_t flags)
 {
     tegra_surface *dst_surf = get_surface(destination_surface);
-    tegra_surface *src_surf;
+    tegra_surface *src_surf = get_surface(source_surface);
     pixman_image_t *src_pix;
     pixman_image_t *dst_pix;
     pixman_format_code_t pfmt;
@@ -214,20 +225,22 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     int need_rotate = 0;
     int ret;
 
-    if (dst_surf == NULL) {
+    if (dst_surf == NULL || src_surf == NULL) {
+        put_surface(dst_surf);
+        put_surface(src_surf);
         return VDP_STATUS_INVALID_HANDLE;
     }
 
     assert(dst_surf->idle_hack ||
            dst_surf->status == VDP_PRESENTATION_QUEUE_STATUS_IDLE);
 
-    src_surf = get_surface(source_surface);
-
     pthread_mutex_lock(&src_surf->lock);
 
     ret = shared_surface_transfer_video(dst_surf);
     if (ret) {
         pthread_mutex_unlock(&src_surf->lock);
+        put_surface(dst_surf);
+        put_surface(src_surf);
         return VDP_STATUS_RESOURCES;
     }
 
@@ -259,6 +272,8 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                                      dst_width, dst_height);
         if (ret == 0) {
             pthread_mutex_unlock(&src_surf->lock);
+            put_surface(dst_surf);
+            put_surface(src_surf);
             return VDP_STATUS_OK;
         }
 
@@ -273,12 +288,17 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
         pthread_mutex_unlock(&src_surf->lock);
 
+        put_surface(dst_surf);
+        put_surface(src_surf);
+
         return VDP_STATUS_OK;
     }
 
     if (blend_state != NULL) {
         if (blend_state->struct_version != VDP_OUTPUT_SURFACE_RENDER_BLEND_STATE_VERSION) {
             pthread_mutex_unlock(&src_surf->lock);
+            put_surface(dst_surf);
+            put_surface(src_surf);
             return VDP_STATUS_INVALID_STRUCT_VERSION;
         }
     }
@@ -328,6 +348,8 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                                  dst_x0, dst_y0,
                                  dst_width, dst_height);
         pthread_mutex_unlock(&src_surf->lock);
+        put_surface(dst_surf);
+        put_surface(src_surf);
         return VDP_STATUS_OK;
     }
 
@@ -382,6 +404,9 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     }
 
     pthread_mutex_unlock(&src_surf->lock);
+
+    put_surface(dst_surf);
+    put_surface(src_surf);
 
     return VDP_STATUS_OK;
 }

@@ -191,6 +191,7 @@ typedef struct tegra_surface {
 
 typedef struct tegra_decoder {
     tegra_device *dev;
+    atomic_t refcnt;
     int is_baseline_profile;
     uint32_t width;
     uint32_t height;
@@ -199,6 +200,7 @@ typedef struct tegra_decoder {
 typedef struct tegra_mixer {
     struct host1x_csc_params csc;
     pthread_mutex_t lock;
+    atomic_t refcnt;
     VdpColor bg_color;
     tegra_device *dev;
     bool custom_csc;
@@ -219,73 +221,71 @@ typedef struct tegra_pq {
     pthread_mutex_t lock;
     pthread_cond_t cond;
     pthread_t disp_thread;
+    atomic_t refcnt;
     bool exit;
 } tegra_pq;
 
 tegra_device * get_device(VdpDevice device);
-
 void ref_device(tegra_device *dev);
-
 VdpStatus unref_device(tegra_device *dev);
+#define put_device(__dev) ({ if (__dev) unref_device(__dev); })
 
+tegra_decoder * __get_decoder(VdpDecoder decoder);
 tegra_decoder * get_decoder(VdpDecoder decoder);
-
+void ref_decoder(tegra_decoder *dec);
+VdpStatus unref_decoder(tegra_decoder *dec);
+#define put_decoder(__dec) ({ if (__dec) unref_decoder(__dec); })
 void set_decoder(VdpDecoder decoder, tegra_decoder *dec);
 
+tegra_mixer * __get_mixer(VdpVideoMixer mixer);
 tegra_mixer * get_mixer(VdpVideoMixer mixer);
-
+void ref_mixer(tegra_mixer *mix);
+VdpStatus unref_mixer(tegra_mixer *mix);
+#define put_mixer(__mix) ({ if (__mix) unref_mixer(__mix); })
 void set_mixer(VdpVideoMixer mixer, tegra_mixer *mix);
 
+tegra_surface * __get_surface(VdpBitmapSurface surface);
 tegra_surface * get_surface(VdpBitmapSurface surface);
-
-tegra_surface * get_surface_ref(VdpBitmapSurface surface);
-
+void ref_surface(tegra_surface *surf);
+VdpStatus unref_surface(tegra_surface *surf);
+#define put_surface(__surf) ({ if (__surf) unref_surface(__surf); })
 void set_surface(VdpBitmapSurface surface, tegra_surface *surf);
-
 void replace_surface(tegra_surface *old_surf, tegra_surface *new_surf);
-
-tegra_pqt * get_presentation_queue_target(VdpPresentationQueueTarget target);
-
-void set_presentation_queue_target(VdpPresentationQueueTarget target,
-                                   tegra_pqt *pqt);
-
-tegra_pq * get_presentation_queue(VdpPresentationQueue presentation_queue);
-
-void set_presentation_queue(VdpPresentationQueue presentation_queue,
-                            tegra_pq *pq);
-
 int dynamic_alloc_surface_data(tegra_surface *surf);
-
 int dynamic_release_surface_data(tegra_surface *surf);
-
 int alloc_surface_data(tegra_surface *surf);
-
 int release_surface_data(tegra_surface *surf);
-
 uint32_t create_surface(tegra_device *dev,
                         uint32_t width,
                         uint32_t height,
                         VdpRGBAFormat rgba_format,
                         int output,
                         int video);
-
 tegra_surface *alloc_surface(tegra_device *dev,
                              uint32_t width, uint32_t height,
                              VdpRGBAFormat rgba_format,
                              int output, int video);
-
 VdpStatus destroy_surface(tegra_surface *surf);
 
-void ref_surface(tegra_surface *surf);
+tegra_pqt * __get_presentation_queue_target(VdpPresentationQueueTarget target);
+tegra_pqt * get_presentation_queue_target(VdpPresentationQueueTarget target);
+void ref_queue_target(tegra_pqt *pqt);
+VdpStatus unref_queue_target(tegra_pqt *pqt);
+#define put_queue_target(__pqt) ({ if (__pqt) unref_queue_target(__pqt); })
+void set_presentation_queue_target(VdpPresentationQueueTarget target,
+                                   tegra_pqt *pqt);
 
-VdpStatus unref_surface(tegra_surface *surf);
+tegra_pq * __get_presentation_queue(VdpPresentationQueue presentation_queue);
+tegra_pq * get_presentation_queue(VdpPresentationQueue presentation_queue);
+void ref_presentation_queue(tegra_pq *pq);
+VdpStatus unref_presentation_queue(tegra_pq *pq);
+#define put_presentation_queue(__pq) ({ if (__pq) unref_presentation_queue(__pq); })
+void set_presentation_queue(VdpPresentationQueue presentation_queue,
+                            tegra_pq *pq);
 
 int sync_dmabuf_write_start(int dmabuf_fd);
-
 int sync_dmabuf_write_end(int dmabuf_fd);
-
 int sync_dmabuf_read_start(int dmabuf_fd);
-
 int sync_dmabuf_read_end(int dmabuf_fd);
 
 enum frame_sync {
@@ -308,15 +308,10 @@ tegra_shared_surface *create_shared_surface(tegra_surface *disp,
                                             uint32_t dst_y0,
                                             uint32_t dst_width,
                                             uint32_t dst_height);
-
 void ref_shared_surface(tegra_shared_surface *shared);
-
 void unref_shared_surface(tegra_shared_surface *shared);
-
 tegra_surface * shared_surface_swap_video(tegra_surface *old);
-
 int shared_surface_transfer_video(tegra_surface *disp);
-
 void shared_surface_kill_disp(tegra_surface *disp);
 
 VdpGetErrorString                                   vdp_get_error_string;

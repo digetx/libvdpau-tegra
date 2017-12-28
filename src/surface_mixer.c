@@ -69,6 +69,8 @@ VdpStatus vdp_video_mixer_query_feature_support(VdpDevice device,
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    put_device(dev);
+
     return VDP_STATUS_OK;
 }
 
@@ -96,6 +98,8 @@ VdpStatus vdp_video_mixer_query_parameter_support(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    put_device(dev);
+
     return VDP_STATUS_OK;
 }
 
@@ -120,6 +124,8 @@ VdpStatus vdp_video_mixer_query_attribute_support(
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
+
+    put_device(dev);
 
     return VDP_STATUS_OK;
 }
@@ -151,8 +157,11 @@ VdpStatus vdp_video_mixer_query_parameter_value_range(
         *(uint32_t *)max_value = INT_MAX;
         break;
     default:
+        put_device(dev);
         return VDP_STATUS_ERROR;
     }
+
+    put_device(dev);
 
     return VDP_STATUS_OK;
 }
@@ -186,8 +195,11 @@ VdpStatus vdp_video_mixer_query_attribute_value_range(
         *(uint8_t *)max_value = 1;
         break;
     default:
+        put_device(dev);
         return VDP_STATUS_ERROR;
     }
+
+    put_device(dev);
 
     return VDP_STATUS_OK;
 }
@@ -216,6 +228,7 @@ VdpStatus vdp_video_mixer_create(VdpDevice device,
             const VdpChromaType *chromatype = parameter_values[parameter_count];
 
             if (*chromatype != VDP_CHROMA_TYPE_420) {
+                put_device(dev);
                 return VDP_STATUS_ERROR;
             }
             break;
@@ -228,7 +241,7 @@ VdpStatus vdp_video_mixer_create(VdpDevice device,
     pthread_mutex_lock(&global_lock);
 
     for (i = 0; i < MAX_MIXERS_NB; i++) {
-        mix = get_mixer(i);
+        mix = __get_mixer(i);
 
         if (mix == NULL) {
             mix = calloc(1, sizeof(tegra_mixer));
@@ -240,6 +253,7 @@ VdpStatus vdp_video_mixer_create(VdpDevice device,
     pthread_mutex_unlock(&global_lock);
 
     if (i == MAX_MIXERS_NB || mix == NULL) {
+        put_device(dev);
         return VDP_STATUS_RESOURCES;
     }
 
@@ -247,16 +261,36 @@ VdpStatus vdp_video_mixer_create(VdpDevice device,
     if (ret != 0) {
         free(mix);
         set_mixer(i, NULL);
-        ErrorMsg("pthread_mutex_init failed\n");
+        put_device(dev);
         return VDP_STATUS_RESOURCES;
     }
 
+    atomic_set(&mix->refcnt, 1);
     ref_device(dev);
     mix->dev = dev;
 
     mixer_apply_vdp_csc(mix, CSC_BT_709);
 
     *mixer = i;
+
+    put_device(dev);
+
+    return VDP_STATUS_OK;
+}
+
+void ref_mixer(tegra_mixer *mix)
+{
+    atomic_inc(&mix->refcnt);
+}
+
+VdpStatus unref_mixer(tegra_mixer *mix)
+{
+    if (!atomic_dec_and_test(&mix->refcnt)) {
+        return VDP_STATUS_OK;
+    }
+
+    unref_device(mix->dev);
+    free(mix);
 
     return VDP_STATUS_OK;
 }
@@ -272,6 +306,8 @@ VdpStatus vdp_video_mixer_set_feature_enables(
     if (mix == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
+
+    put_mixer(mix);
 
     return VDP_STATUS_OK;
 }
@@ -306,6 +342,8 @@ VdpStatus vdp_video_mixer_set_attribute_values(
 
     pthread_mutex_unlock(&mix->lock);
 
+    put_mixer(mix);
+
     return VDP_STATUS_OK;
 }
 
@@ -325,6 +363,8 @@ VdpStatus vdp_video_mixer_get_feature_support(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    put_mixer(mix);
+
     return VDP_STATUS_ERROR;
 }
 
@@ -339,6 +379,8 @@ VdpStatus vdp_video_mixer_get_feature_enables(
     if (mix == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
+
+    put_mixer(mix);
 
     return VDP_STATUS_ERROR;
 }
@@ -355,6 +397,8 @@ VdpStatus vdp_video_mixer_get_parameter_values(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    put_mixer(mix);
+
     return VDP_STATUS_ERROR;
 }
 
@@ -370,6 +414,8 @@ VdpStatus vdp_video_mixer_get_attribute_values(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    put_mixer(mix);
+
     return VDP_STATUS_ERROR;
 }
 
@@ -382,11 +428,9 @@ VdpStatus vdp_video_mixer_destroy(VdpVideoMixer mixer)
     }
 
     set_mixer(mixer, NULL);
+    put_mixer(mix);
 
-    unref_device(mix->dev);
-    free(mix);
-
-    return VDP_STATUS_OK;
+    return unref_mixer(mix);
 }
 
 VdpStatus vdp_video_mixer_render(
@@ -419,6 +463,10 @@ VdpStatus vdp_video_mixer_render(
     int ret;
 
     if (dest_surf == NULL || mix == NULL) {
+        put_mixer(mix);
+        put_surface(bg_surf);
+        put_surface(dest_surf);
+        put_surface(video_surf);
         return VDP_STATUS_INVALID_HANDLE;
     }
 
@@ -494,6 +542,10 @@ VdpStatus vdp_video_mixer_render(
             if (ret) {
                 pthread_mutex_unlock(&dest_surf->lock);
                 pthread_mutex_unlock(&mix->lock);
+                put_mixer(mix);
+                put_surface(bg_surf);
+                put_surface(dest_surf);
+                put_surface(video_surf);
                 return VDP_STATUS_RESOURCES;
             }
 
@@ -518,6 +570,10 @@ VdpStatus vdp_video_mixer_render(
         if (ret) {
             pthread_mutex_unlock(&dest_surf->lock);
             pthread_mutex_unlock(&mix->lock);
+            put_mixer(mix);
+            put_surface(bg_surf);
+            put_surface(dest_surf);
+            put_surface(video_surf);
             return VDP_STATUS_RESOURCES;
         }
 
@@ -551,6 +607,10 @@ VdpStatus vdp_video_mixer_render(
             if (ret) {
                 pthread_mutex_unlock(&dest_surf->lock);
                 pthread_mutex_unlock(&mix->lock);
+                put_mixer(mix);
+                put_surface(bg_surf);
+                put_surface(dest_surf);
+                put_surface(video_surf);
                 return VDP_STATUS_RESOURCES;
             }
 
@@ -586,6 +646,10 @@ VdpStatus vdp_video_mixer_render(
         if (layers[layer_count].struct_version != VDP_LAYER_VERSION) {
             pthread_mutex_unlock(&dest_surf->lock);
             pthread_mutex_unlock(&mix->lock);
+            put_mixer(mix);
+            put_surface(bg_surf);
+            put_surface(dest_surf);
+            put_surface(video_surf);
             return VDP_STATUS_INVALID_STRUCT_VERSION;
         }
 
@@ -601,6 +665,11 @@ VdpStatus vdp_video_mixer_render(
 
     pthread_mutex_unlock(&dest_surf->lock);
     pthread_mutex_unlock(&mix->lock);
+
+    put_mixer(mix);
+    put_surface(bg_surf);
+    put_surface(dest_surf);
+    put_surface(video_surf);
 
     return VDP_STATUS_OK;
 }

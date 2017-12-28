@@ -175,6 +175,11 @@ del_surface:
     return NULL;
 }
 
+void ref_queue_target(tegra_pqt *pqt)
+{
+    atomic_inc(&pqt->refcnt);
+}
+
 VdpStatus unref_queue_target(tegra_pqt *pqt)
 {
     tegra_device *dev = pqt->dev;
@@ -185,6 +190,7 @@ VdpStatus unref_queue_target(tegra_pqt *pqt)
     if (pqt->gc != None)
         XFreeGC(dev->display, pqt->gc);
 
+    unref_device(dev);
     free(pqt);
 
     return VDP_STATUS_OK;
@@ -201,7 +207,9 @@ VdpStatus vdp_presentation_queue_target_destroy(
 
     set_presentation_queue_target(presentation_queue_target, NULL);
 
-    return unref_queue_target(pqt);
+    put_queue_target(pqt);
+
+    return VDP_STATUS_OK;
 }
 
 VdpStatus vdp_presentation_queue_create(
@@ -218,13 +226,15 @@ VdpStatus vdp_presentation_queue_create(
     int ret;
 
     if (dev == NULL || pqt == NULL) {
+        put_device(dev);
+        put_queue_target(pqt);
         return VDP_STATUS_INVALID_HANDLE;
     }
 
     pthread_mutex_lock(&global_lock);
 
     for (i = 0; i < MAX_PRESENTATION_QUEUES_NB; i++) {
-        pq = get_presentation_queue(i);
+        pq = __get_presentation_queue(i);
 
         if (pq == NULL) {
             pq = calloc(1, sizeof(tegra_pq));
@@ -236,12 +246,16 @@ VdpStatus vdp_presentation_queue_create(
     pthread_mutex_unlock(&global_lock);
 
     if (i == MAX_PRESENTATION_QUEUES_NB || pq == NULL) {
+        put_device(dev);
+        put_queue_target(pqt);
         return VDP_STATUS_RESOURCES;
     }
 
     ret = pthread_mutex_init(&pq->lock, NULL);
     if (ret != 0) {
         ErrorMsg("pthread_mutex_init failed\n");
+        put_device(dev);
+        put_queue_target(pqt);
         return VDP_STATUS_RESOURCES;
     }
 
@@ -251,12 +265,15 @@ VdpStatus vdp_presentation_queue_create(
     ret = pthread_cond_init(&pq->cond, &cond_attrs);
     if (ret != 0) {
         ErrorMsg("pthread_cond_init failed\n");
+        put_device(dev);
+        put_queue_target(pqt);
         return VDP_STATUS_RESOURCES;
     }
 
     pthread_condattr_destroy(&cond_attrs);
 
     LIST_INITHEAD(&pq->surf_list);
+    atomic_set(&pq->refcnt, 1);
     pq->pqt = pqt;
 
     pthread_attr_init(&thread_attrs);
@@ -266,15 +283,50 @@ VdpStatus vdp_presentation_queue_create(
                          presentation_queue_thr, pq);
     if (ret != 0) {
         ErrorMsg("pthread_create failed\n");
+        put_device(dev);
+        put_queue_target(pqt);
         return VDP_STATUS_RESOURCES;
     }
 
     pthread_attr_destroy(&thread_attrs);
 
-    atomic_inc(&pqt->refcnt);
+    ref_queue_target(pqt);
     ref_device(dev);
 
     *presentation_queue = i;
+
+    put_device(dev);
+    put_queue_target(pqt);
+
+    return VDP_STATUS_OK;
+}
+
+void ref_presentation_queue(tegra_pq *pq)
+{
+    atomic_inc(&pq->refcnt);
+}
+
+VdpStatus unref_presentation_queue(tegra_pq *pq)
+{
+    tegra_device *dev;
+    tegra_pqt *pqt;
+
+    if (!atomic_dec_and_test(&pq->refcnt))
+        return VDP_STATUS_OK;
+
+    pqt = pq->pqt;
+    dev = pqt->dev;
+
+    pthread_mutex_lock(&pq->lock);
+    pq->exit = true;
+    pthread_cond_signal(&pq->cond);
+    pthread_mutex_unlock(&pq->lock);
+
+    pthread_join(pq->disp_thread, NULL);
+
+    unref_queue_target(pqt);
+    unref_device(dev);
+    free(pq);
 
     return VDP_STATUS_OK;
 }
@@ -283,28 +335,13 @@ VdpStatus vdp_presentation_queue_destroy(
                                         VdpPresentationQueue presentation_queue)
 {
     tegra_pq *pq = get_presentation_queue(presentation_queue);
-    tegra_pqt *pqt;
-    tegra_device *dev;
 
     if (pq == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    pqt = pq->pqt;
-    dev = pqt->dev;
-
     set_presentation_queue(presentation_queue, NULL);
-
-    pthread_mutex_lock(&pq->lock);
-
-    pq->exit = true;
-    pthread_cond_signal(&pq->cond);
-    pthread_mutex_unlock(&pq->lock);
-    pthread_join(pq->disp_thread, NULL);
-
-    unref_queue_target(pqt);
-    unref_device(dev);
-    free(pq);
+    put_presentation_queue(pq);
 
     return VDP_STATUS_OK;
 }
@@ -319,6 +356,8 @@ VdpStatus vdp_presentation_queue_set_background_color(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    put_presentation_queue(pq);
+
     return VDP_STATUS_OK;
 }
 
@@ -331,6 +370,8 @@ VdpStatus vdp_presentation_queue_get_background_color(
     if (pq == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
+
+    put_presentation_queue(pq);
 
     return VDP_STATUS_OK;
 }
@@ -347,6 +388,8 @@ VdpStatus vdp_presentation_queue_get_time(
 
     *current_time = get_time();
 
+    put_presentation_queue(pq);
+
     return VDP_STATUS_OK;
 }
 
@@ -357,8 +400,8 @@ VdpStatus vdp_presentation_queue_display(
                                         uint32_t clip_height,
                                         VdpTime earliest_presentation_time)
 {
-    tegra_surface *surf = get_surface(surface);
     tegra_pq *pq = get_presentation_queue(presentation_queue);
+    tegra_surface *surf;
     tegra_pqt *pqt;
     VdpTime time;
 
@@ -368,8 +411,9 @@ VdpStatus vdp_presentation_queue_display(
 
     pqt = pq->pqt;
 
-    /* This will happen on surface allocation failure. */
+    surf = get_surface(surface);
     if (surf == NULL) {
+        /* This will happen on surface allocation failure. */
         time = get_time();
 
         if (earliest_presentation_time > time) {
@@ -382,6 +426,8 @@ VdpStatus vdp_presentation_queue_display(
 
         pthread_cond_signal(&pq->cond);
         pthread_mutex_unlock(&pq->lock);
+
+        put_presentation_queue(pq);
 
         return VDP_STATUS_RESOURCES;
     }
@@ -405,6 +451,9 @@ VdpStatus vdp_presentation_queue_display(
         pthread_mutex_unlock(&surf->lock);
         pthread_mutex_unlock(&pq->lock);
 
+        put_surface(surf);
+        put_presentation_queue(pq);
+
         return VDP_STATUS_OK;
     }
 
@@ -417,6 +466,9 @@ VdpStatus vdp_presentation_queue_display(
 
     pthread_cond_signal(&pq->cond);
     pthread_mutex_unlock(&pq->lock);
+
+    put_surface(surf);
+    put_presentation_queue(pq);
 
     return VDP_STATUS_OK;
 }
@@ -431,11 +483,11 @@ VdpStatus vdp_presentation_queue_block_until_surface_idle(
     VdpStatus ret = VDP_STATUS_ERROR;
 
     if (surf == NULL || pq == NULL) {
+        put_surface(surf);
+        put_presentation_queue(pq);
         *first_presentation_time = get_time();
         return VDP_STATUS_INVALID_HANDLE;
     }
-
-    ref_surface(surf);
 
     pthread_mutex_lock(&surf->lock);
 
@@ -463,7 +515,8 @@ VdpStatus vdp_presentation_queue_block_until_surface_idle(
 unlock:
     pthread_mutex_unlock(&surf->lock);
 
-    unref_surface(surf);
+    put_surface(surf);
+    put_presentation_queue(pq);
 
     return ret;
 }
@@ -478,12 +531,17 @@ VdpStatus vdp_presentation_queue_query_surface_status(
     tegra_pq *pq = get_presentation_queue(presentation_queue);
 
     if (surf == NULL || pq == NULL) {
+        put_surface(surf);
+        put_presentation_queue(pq);
         *first_presentation_time = get_time();
         return VDP_STATUS_INVALID_HANDLE;
     }
 
     *status = surf->status;
     *first_presentation_time = surf->first_presentation_time;
+
+    put_surface(surf);
+    put_presentation_queue(pq);
 
     return VDP_STATUS_OK;
 }
@@ -505,7 +563,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(
     pthread_mutex_lock(&global_lock);
 
     for (i = 0; i < MAX_PRESENTATION_QUEUE_TARGETS_NB; i++) {
-        pqt = get_presentation_queue_target(i);
+        pqt = __get_presentation_queue_target(i);
 
         if (pqt == NULL) {
             pqt = calloc(1, sizeof(tegra_pqt));
@@ -517,10 +575,12 @@ VdpStatus vdp_presentation_queue_target_create_x11(
     pthread_mutex_unlock(&global_lock);
 
     if (i == MAX_PRESENTATION_QUEUE_TARGETS_NB || pqt == NULL) {
+        put_device(dev);
         return VDP_STATUS_RESOURCES;
     }
 
     atomic_set(&pqt->refcnt, 1);
+    ref_device(dev);
     pqt->dev = dev;
     pqt->drawable = drawable;
     pqt->gc = XCreateGC(dev->display, drawable, 0, &values);
@@ -529,6 +589,8 @@ VdpStatus vdp_presentation_queue_target_create_x11(
     XClearWindow(dev->display, drawable);
 
     *target = i;
+
+    put_device(dev);
 
     return VDP_STATUS_OK;
 }
