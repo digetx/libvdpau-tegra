@@ -13,6 +13,7 @@ libvdpau_tegra_la_SOURCES = vdpau_tegra.c \
                             surface_shared.c \
                             surface.c \
                             presentation_queue.c \
+                            presentation_queue_target.c \
                             decoder.c \
                             dmabuf.c \
                             bitstream.c \
