@@ -206,16 +206,15 @@ static void * presentation_queue_thr(void *opaque)
     pthread_mutex_lock(&pq->lock);
 
     while (true) {
-        if (time == UINT64_MAX) {
-            clock_gettime(CLOCK_MONOTONIC, &tp);
-            tp.tv_sec += 9999999;
-        } else {
+        if (time != UINT64_MAX) {
             memset(&tp, 0, sizeof(tp));
             tp.tv_sec = time / 1000000000ULL;
             tp.tv_nsec = time - tp.tv_sec * 1000000000ULL;
-        }
 
-        ret = pthread_cond_timedwait(&pq->cond, &pq->lock, &tp);
+            ret = pthread_cond_timedwait(&pq->cond, &pq->lock, &tp);
+        } else {
+            ret = pthread_cond_wait(&pq->cond, &pq->lock);
+        }
 
         if (pq->exit) {
             LIST_FOR_EACH_ENTRY_SAFE(surf, tmp, &pq->surf_list, list_item) {
