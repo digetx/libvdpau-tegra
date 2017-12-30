@@ -44,6 +44,9 @@ int host1x_gr2d_clear_rect(struct tegra_stream *stream,
     unsigned tiled = 0;
     int err;
 
+    DebugMsg("pixbuf width %u height %u color 0x%08X x %u y %u width %u height %u\n",
+             pixbuf->width, pixbuf->height, color, x, y, width, height);
+
     if (x + width > pixbuf->width)
         return -EINVAL;
 
@@ -110,6 +113,12 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
 {
     unsigned tiled = 0;
     int err;
+
+    DebugMsg("pixbuf width %u height %u color 0x%08X x %u y %u "
+             "width %u height %u clip_x0 %u, clip_y0 %u clip_x1 %u clip_y1 %u"
+             " draw_outside %d\n",
+             pixbuf->width, pixbuf->height, color, x, y,
+             width, height, clip_x0, clip_y0, clip_x1, clip_y1, draw_outside);
 
     if (x + width > pixbuf->width)
         return -EINVAL;
@@ -201,6 +210,14 @@ int host1x_gr2d_blit(struct tegra_stream *stream,
     unsigned xdir = 0;
     unsigned ydir = 0;
     int err;
+
+    DebugMsg("pixbuf src width %u height %u format %u "
+             "dst width %u height %u format %u "
+             "sx %u sy %u dx %u dy %u width %u height %u\n",
+             src->width, src->height, src->format,
+             dst->width, dst->height, dst->format,
+             sx, sy, dx, dy, width, height);
+
 
     if (PIX_BUF_FORMAT_BYTES(src->format) !=
         PIX_BUF_FORMAT_BYTES(dst->format))
@@ -360,6 +377,15 @@ int host1x_gr2d_surface_blit(struct tegra_stream *stream,
     unsigned vftype;
     unsigned vfen;
     int err;
+
+    DebugMsg("pixbuf src width %u height %u format %u "
+             "dst width %u height %u format %u "
+             "sx %u sy %u src_width %u src_height %u "
+             "dx %u dy %u dst_width %u dst_height %u\n",
+             src->width, src->height, src->format,
+             dst->width, dst->height, dst->format,
+             sx, sy, src_width, src_height,
+             dx, dy, dst_width, dst_height);
 
     switch (src->layout) {
     case PIX_BUF_LAYOUT_TILED_16x16:

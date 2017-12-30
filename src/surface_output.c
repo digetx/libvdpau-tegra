@@ -277,6 +277,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         pthread_mutex_unlock(&dst_surf->dev->lock);
 
         if (ret == 0) {
+            ErrorMsg("surface clear failed %d\n", ret);
             put_surface(dst_surf);
             put_surface(src_surf);
             return VDP_STATUS_OK;
@@ -343,14 +344,17 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     if (!need_rotate) {
         pthread_mutex_lock(&dst_surf->dev->lock);
 
-        host1x_gr2d_surface_blit(dst_surf->dev->stream,
-                                 src_surf->pixbuf,
-                                 dst_surf->pixbuf,
-                                 &csc_rgb_default,
-                                 src_x0, src_y0,
-                                 src_width, src_height,
-                                 dst_x0, dst_y0,
-                                 dst_width, dst_height);
+        ret = host1x_gr2d_surface_blit(dst_surf->dev->stream,
+                                       src_surf->pixbuf,
+                                       dst_surf->pixbuf,
+                                       &csc_rgb_default,
+                                       src_x0, src_y0,
+                                       src_width, src_height,
+                                       dst_x0, dst_y0,
+                                       dst_width, dst_height);
+        if (ret) {
+            ErrorMsg("surface copying failed %d\n", ret);
+        }
 
         pthread_mutex_unlock(&dst_surf->dev->lock);
 

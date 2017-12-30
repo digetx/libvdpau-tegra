@@ -260,32 +260,39 @@ int shared_surface_transfer_video(tegra_surface *disp)
              shared->video->surface_id);
 
     if (disp->set_bg) {
-        host1x_gr2d_clear_rect_clipped(disp->dev->stream,
-                                       disp->pixbuf,
-                                       disp->bg_color,
-                                       0, 0,
-                                       disp->width,
-                                       disp->height,
-                                       shared->dst_x0,
-                                       shared->dst_y0,
-                                       shared->dst_x0 + shared->dst_width,
-                                       shared->dst_y0 + shared->dst_height,
-                                       true);
+        ret = host1x_gr2d_clear_rect_clipped(disp->dev->stream,
+                                             disp->pixbuf,
+                                             disp->bg_color,
+                                             0, 0,
+                                             disp->width,
+                                             disp->height,
+                                             shared->dst_x0,
+                                             shared->dst_y0,
+                                             shared->dst_x0 + shared->dst_width,
+                                             shared->dst_y0 + shared->dst_height,
+                                             true);
+        if (ret) {
+            ErrorMsg("setting BG failed %d\n", ret);
+        }
+
         disp->set_bg = false;
     }
 
-    host1x_gr2d_surface_blit(video->dev->stream,
-                             video->pixbuf,
-                             disp->pixbuf,
-                             &shared->csc,
-                             shared->src_x0,
-                             shared->src_y0,
-                             shared->src_width,
-                             shared->src_height,
-                             shared->dst_x0,
-                             shared->dst_y0,
-                             shared->dst_width,
-                             shared->dst_height);
+    ret = host1x_gr2d_surface_blit(video->dev->stream,
+                                   video->pixbuf,
+                                   disp->pixbuf,
+                                   &shared->csc,
+                                   shared->src_x0,
+                                   shared->src_y0,
+                                   shared->src_width,
+                                   shared->src_height,
+                                   shared->dst_x0,
+                                   shared->dst_y0,
+                                   shared->dst_width,
+                                   shared->dst_height);
+    if (ret) {
+        ErrorMsg("video transfer failed %d\n", ret);
+    }
 
     pthread_mutex_unlock(&disp->dev->lock);
 

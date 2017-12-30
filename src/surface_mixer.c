@@ -558,15 +558,21 @@ VdpStatus vdp_video_mixer_render(
 
             pthread_mutex_lock(&mix->dev->lock);
 
-            host1x_gr2d_clear_rect_clipped(mix->dev->stream,
-                                           dest_surf->pixbuf,
-                                           bg_color,
-                                           bg_x0, bg_y0,
-                                           bg_width, bg_height,
-                                           dst_vid_x0, dst_vid_y0,
-                                           dst_vid_x0 + dst_vid_width,
-                                           dst_vid_y0 + dst_vid_height,
-                                           true);
+            ret = host1x_gr2d_clear_rect_clipped(mix->dev->stream,
+                                                 dest_surf->pixbuf,
+                                                 bg_color,
+                                                 bg_x0,
+                                                 bg_y0,
+                                                 bg_width,
+                                                 bg_height,
+                                                 dst_vid_x0,
+                                                 dst_vid_y0,
+                                                 dst_vid_x0 + dst_vid_width,
+                                                 dst_vid_y0 + dst_vid_height,
+                                                 true);
+            if (ret) {
+                ErrorMsg("setting BG failed %d\n", ret);
+            }
 
             pthread_mutex_unlock(&mix->dev->lock);
         } else {
@@ -591,16 +597,21 @@ VdpStatus vdp_video_mixer_render(
 
         pthread_mutex_lock(&mix->dev->lock);
 
-        host1x_gr2d_surface_blit(mix->dev->stream,
-                                 bg_surf->pixbuf,
-                                 dest_surf->pixbuf,
-                                 &csc_rgb_default,
-                                 bg_x0, bg_y0,
-                                 bg_width, bg_height,
-                                 0,
-                                 0,
-                                 dest_surf->width,
-                                 dest_surf->height);
+        ret = host1x_gr2d_surface_blit(mix->dev->stream,
+                                       bg_surf->pixbuf,
+                                       dest_surf->pixbuf,
+                                       &csc_rgb_default,
+                                       bg_x0,
+                                       bg_y0,
+                                       bg_width,
+                                       bg_height,
+                                       0,
+                                       0,
+                                       dest_surf->width,
+                                       dest_surf->height);
+        if (ret) {
+            ErrorMsg("copying BG failed %d\n", ret);
+        }
 
         pthread_mutex_unlock(&mix->dev->lock);
     }
@@ -638,15 +649,21 @@ VdpStatus vdp_video_mixer_render(
 
             pthread_mutex_lock(&mix->dev->lock);
 
-            host1x_gr2d_clear_rect_clipped(mix->dev->stream,
-                                           dest_surf->pixbuf,
-                                           bg_color,
-                                           bg_x0, bg_y0,
-                                           bg_width, bg_height,
-                                           dst_vid_x0, dst_vid_y0,
-                                           dst_vid_x0 + dst_vid_width,
-                                           dst_vid_y0 + dst_vid_height,
-                                           true);
+            ret = host1x_gr2d_clear_rect_clipped(mix->dev->stream,
+                                                 dest_surf->pixbuf,
+                                                 bg_color,
+                                                 bg_x0,
+                                                 bg_y0,
+                                                 bg_width,
+                                                 bg_height,
+                                                 dst_vid_x0,
+                                                 dst_vid_y0,
+                                                 dst_vid_x0 + dst_vid_width,
+                                                 dst_vid_y0 + dst_vid_height,
+                                                 true);
+            if (ret) {
+                ErrorMsg("setting BG failed %d\n", ret);
+            }
 
             pthread_mutex_unlock(&mix->dev->lock);
 
@@ -657,18 +674,21 @@ VdpStatus vdp_video_mixer_render(
     if (!shared) {
         pthread_mutex_lock(&mix->dev->lock);
 
-        host1x_gr2d_surface_blit(mix->dev->stream,
-                                 video_surf->pixbuf,
-                                 dest_surf->pixbuf,
-                                 &mix->csc,
-                                 src_vid_x0,
-                                 src_vid_y0,
-                                 src_vid_width,
-                                 src_vid_height,
-                                 dst_vid_x0,
-                                 dst_vid_y0,
-                                 dst_vid_width,
-                                 dst_vid_height);
+        ret = host1x_gr2d_surface_blit(mix->dev->stream,
+                                       video_surf->pixbuf,
+                                       dest_surf->pixbuf,
+                                       &mix->csc,
+                                       src_vid_x0,
+                                       src_vid_y0,
+                                       src_vid_width,
+                                       src_vid_height,
+                                       dst_vid_x0,
+                                       dst_vid_y0,
+                                       dst_vid_width,
+                                       dst_vid_height);
+        if (ret) {
+            ErrorMsg("video transfer failed %d\n", ret);
+        }
 
         pthread_mutex_unlock(&mix->dev->lock);
     }

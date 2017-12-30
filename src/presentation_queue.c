@@ -122,6 +122,8 @@ static void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf)
 
 static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
 {
+    int ret;
+
     if (!DRI_OUTPUT) {
         return;
     }
@@ -144,47 +146,56 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
         DebugMsg("surface %u transfer YUV\n", surf->surface_id);
 
         if (surf->set_bg) {
-            host1x_gr2d_clear_rect_clipped(surf->dev->stream,
-                                           pqt->dri_pixbuf,
-                                           surf->bg_color,
-                                           0,
-                                           0,
-                                           pqt->dri_pixbuf->width,
-                                           pqt->dri_pixbuf->height,
-                                           surf->shared->dst_x0,
-                                           surf->shared->dst_y0,
-                                           surf->shared->dst_x0 + surf->shared->dst_width,
-                                           surf->shared->dst_y0 + surf->shared->dst_height,
-                                           true);
+            ret = host1x_gr2d_clear_rect_clipped(surf->dev->stream,
+                                                 pqt->dri_pixbuf,
+                                                 surf->bg_color,
+                                                 0,
+                                                 0,
+                                                 pqt->dri_pixbuf->width,
+                                                 pqt->dri_pixbuf->height,
+                                                 surf->shared->dst_x0,
+                                                 surf->shared->dst_y0,
+                                                 surf->shared->dst_x0 + surf->shared->dst_width,
+                                                 surf->shared->dst_y0 + surf->shared->dst_height,
+                                                 true);
+            if (ret) {
+                ErrorMsg("setting BG failed %d\n", ret);
+            }
         }
 
-        host1x_gr2d_surface_blit(pqt->dev->stream,
-                                 surf->shared->video->pixbuf,
-                                 pqt->dri_pixbuf,
-                                 &surf->shared->csc,
-                                 surf->shared->src_x0,
-                                 surf->shared->src_y0,
-                                 surf->shared->src_width,
-                                 surf->shared->src_height,
-                                 surf->shared->dst_x0,
-                                 surf->shared->dst_y0,
-                                 surf->shared->dst_width,
-                                 surf->shared->dst_height);
+        ret = host1x_gr2d_surface_blit(pqt->dev->stream,
+                                       surf->shared->video->pixbuf,
+                                       pqt->dri_pixbuf,
+                                       &surf->shared->csc,
+                                       surf->shared->src_x0,
+                                       surf->shared->src_y0,
+                                       surf->shared->src_width,
+                                       surf->shared->src_height,
+                                       surf->shared->dst_x0,
+                                       surf->shared->dst_y0,
+                                       surf->shared->dst_width,
+                                       surf->shared->dst_height);
+        if (ret) {
+            ErrorMsg("video transfer failed %d\n", ret);
+        }
     } else if (surf->pixbuf) {
         DebugMsg("surface %u transfer RGB\n", surf->surface_id);
 
-        host1x_gr2d_surface_blit(pqt->dev->stream,
-                                 surf->pixbuf,
-                                 pqt->dri_pixbuf,
-                                 &csc_rgb_default,
-                                 0,
-                                 0,
-                                 surf->disp_width,
-                                 surf->disp_height,
-                                 0,
-                                 0,
-                                 pqt->dri_pixbuf->width,
-                                 pqt->dri_pixbuf->height);
+        ret = host1x_gr2d_surface_blit(pqt->dev->stream,
+                                       surf->pixbuf,
+                                       pqt->dri_pixbuf,
+                                       &csc_rgb_default,
+                                       0,
+                                       0,
+                                       surf->disp_width,
+                                       surf->disp_height,
+                                       0,
+                                       0,
+                                       pqt->dri_pixbuf->width,
+                                       pqt->dri_pixbuf->height);
+        if (ret) {
+            ErrorMsg("video transfer failed %d\n", ret);
+        }
     }
 
     pthread_mutex_unlock(&pqt->dev->lock);
