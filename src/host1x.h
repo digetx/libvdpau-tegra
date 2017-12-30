@@ -111,6 +111,7 @@ struct host1x_pixelbuffer {
     unsigned pitch_uv;
     uint32_t guard_offset[3];
     uint32_t bo_offset[3];
+    bool guard_enabled;
 };
 
 #define PIXBUF_GUARD_AREA_SIZE    0x4000
@@ -122,6 +123,14 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
                                                      unsigned pitch_uv,
                                                      enum pixel_format format,
                                                      enum layout_format layout);
+
+struct host1x_pixelbuffer *host1x_pixelbuffer_wrap(struct drm_tegra_bo **bos,
+                                                   unsigned width,
+                                                   unsigned height,
+                                                   unsigned pitch,
+                                                   unsigned pitch_uv,
+                                                   enum pixel_format format,
+                                                   enum layout_format layout);
 
 void host1x_pixelbuffer_free(struct host1x_pixelbuffer *pixbuf);
 

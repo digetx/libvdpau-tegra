@@ -19,6 +19,69 @@
 
 #include "vdpau_tegra.h"
 
+void pqt_update_dri_pixbuf(tegra_pqt *pqt)
+{
+    tegra_device *dev = pqt->dev;
+    struct drm_tegra_bo *bo;
+    DRI2Buffer *buf;
+    unsigned int attachment = DRI2BufferBackLeft;
+    int width, height;
+    int outCount;
+    int err;
+
+    if (pqt->dri_pixbuf) {
+        host1x_pixelbuffer_free(pqt->dri_pixbuf);
+        pqt->dri_pixbuf = NULL;
+    }
+
+    buf = DRI2GetBuffers(dev->display, pqt->drawable, &width, &height,
+                         &attachment, 1, &outCount);
+    if (!buf || outCount != 1) {
+        ErrorMsg("Failed to get DRI2 buffer\n");
+        return;
+    }
+
+    err = drm_tegra_bo_from_name(&bo, dev->drm, buf[0].names[0], 0);
+    if (err) {
+        return;
+    }
+
+    err = drm_tegra_bo_forbid_caching(bo);
+    if (err) {
+        drm_tegra_bo_unref(bo);
+        return;
+    }
+
+    pqt->dri_pixbuf = host1x_pixelbuffer_wrap(&bo, width, height,
+                                              buf[0].pitch[0], 0,
+                                              PIX_BUF_FMT_ARGB8888,
+                                              PIX_BUF_LAYOUT_LINEAR);
+    if (!pqt->dri_pixbuf) {
+        drm_tegra_bo_unref(bo);
+        return;
+    }
+}
+
+static bool initialize_dri2(tegra_pqt *pqt)
+{
+    tegra_device *dev = pqt->dev;
+    char *driverName, *deviceName;
+    Bool ret;
+
+    ret = DRI2Connect(dev->display, pqt->drawable, DRI2DriverVDPAU,
+                      &driverName, &deviceName);
+    if (!ret) {
+        ErrorMsg("DRI2 connect failed\n");
+        return false;
+    }
+
+    DRI2CreateDrawable(dev->display, pqt->drawable);
+
+    pqt_update_dri_pixbuf(pqt);
+
+    return true;
+}
+
 void ref_queue_target(tegra_pqt *pqt)
 {
     atomic_inc(&pqt->refcnt);
@@ -96,8 +159,16 @@ VdpStatus vdp_presentation_queue_target_create_x11(
     pqt->drawable = drawable;
     pqt->gc = XCreateGC(dev->display, drawable, 0, &values);
 
-    XSetWindowBackground(dev->display, drawable, pqt->bg_color);
-    XClearWindow(dev->display, drawable);
+    if (!DRI_OUTPUT) {
+        XSetWindowBackground(dev->display, drawable, pqt->bg_color);
+        XClearWindow(dev->display, drawable);
+    } else {
+        if (!initialize_dri2(pqt)) {
+            put_queue_target(pqt);
+            put_device(dev);
+            return VDP_STATUS_RESOURCES;
+        }
+    }
 
     *target = i;
 

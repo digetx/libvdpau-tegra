@@ -446,10 +446,8 @@ VdpStatus unref_surface(tegra_surface *surf)
         return VDP_STATUS_OK;
     }
 
-    pthread_mutex_lock(&surf->lock);
     dynamic_release_surface_data(surf);
     unref_device(surf->dev);
-    pthread_mutex_unlock(&surf->lock);
 
     set_surface(surf->surface_id, NULL);
     free(surf->frame);

@@ -117,6 +117,25 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
     if (y + height > pixbuf->height)
         return -EINVAL;
 
+    if (clip_x0 > pixbuf->width)
+        return -EINVAL;
+
+    if (clip_y0 > pixbuf->height)
+        return -EINVAL;
+
+    if (clip_x1 > pixbuf->width)
+        return -EINVAL;
+
+    if (clip_y1 > pixbuf->height)
+        return -EINVAL;
+
+    if (draw_outside &&
+            x == clip_x0 &&
+                y == clip_y0 &&
+                    x + width == clip_x1 &&
+                        y + height == clip_y1)
+        return 0;
+
     switch (pixbuf->layout) {
     case PIX_BUF_LAYOUT_TILED_16x16:
         tiled = 1;

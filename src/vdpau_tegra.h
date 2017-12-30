@@ -107,6 +107,8 @@
 
 #define UNIFIED_BUFFER  0
 
+#define DRI_OUTPUT      0
+
 extern VdpCSCMatrix CSC_BT_601;
 extern VdpCSCMatrix CSC_BT_709;
 
@@ -120,6 +122,7 @@ typedef struct tegra_device {
     struct drm_tegra *drm;
     struct drm_tegra_channel *gr2d;
     struct tegra_stream *stream;
+    pthread_mutex_t lock;
     Display *display;
     XvPortID xv_port;
     atomic_t refcnt;
@@ -207,6 +210,7 @@ typedef struct tegra_mixer {
 typedef struct tegra_pqt {
     tegra_device *dev;
     tegra_surface *disp_surf;
+    struct host1x_pixelbuffer *dri_pixbuf;
     Drawable drawable;
     GC gc;
     atomic_t refcnt;
@@ -272,6 +276,7 @@ VdpStatus unref_queue_target(tegra_pqt *pqt);
 #define put_queue_target(__pqt) ({ if (__pqt) unref_queue_target(__pqt); })
 void set_presentation_queue_target(VdpPresentationQueueTarget target,
                                    tegra_pqt *pqt);
+void pqt_update_dri_pixbuf(tegra_pqt *pqt);
 
 tegra_pq * __get_presentation_queue(VdpPresentationQueue presentation_queue);
 tegra_pq * get_presentation_queue(VdpPresentationQueue presentation_queue);

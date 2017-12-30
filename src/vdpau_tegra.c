@@ -650,7 +650,9 @@ xv_detected:
         goto err_cleanup;
     }
 
+    pthread_mutex_init(&tegra_devices[i]->lock, NULL);
     atomic_set(&tegra_devices[i]->refcnt, 1);
+
     tegra_devices[i]->xv_port = adaptor_info[num_adaptors].base_id;
     tegra_devices[i]->display = display;
     tegra_devices[i]->screen = screen;

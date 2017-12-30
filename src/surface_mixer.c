@@ -556,6 +556,8 @@ VdpStatus vdp_video_mixer_render(
                 return VDP_STATUS_RESOURCES;
             }
 
+            pthread_mutex_lock(&mix->dev->lock);
+
             host1x_gr2d_clear_rect_clipped(mix->dev->stream,
                                            dest_surf->pixbuf,
                                            bg_color,
@@ -565,6 +567,8 @@ VdpStatus vdp_video_mixer_render(
                                            dst_vid_x0 + dst_vid_width,
                                            dst_vid_y0 + dst_vid_height,
                                            true);
+
+            pthread_mutex_unlock(&mix->dev->lock);
         } else {
             dest_surf->bg_color = bg_color;
             dest_surf->set_bg = true;
@@ -585,6 +589,8 @@ VdpStatus vdp_video_mixer_render(
             return VDP_STATUS_RESOURCES;
         }
 
+        pthread_mutex_lock(&mix->dev->lock);
+
         host1x_gr2d_surface_blit(mix->dev->stream,
                                  bg_surf->pixbuf,
                                  dest_surf->pixbuf,
@@ -595,6 +601,8 @@ VdpStatus vdp_video_mixer_render(
                                  0,
                                  dest_surf->width,
                                  dest_surf->height);
+
+        pthread_mutex_unlock(&mix->dev->lock);
     }
 
     if (bg_surf) {
@@ -602,7 +610,7 @@ VdpStatus vdp_video_mixer_render(
     }
 
     if (!draw_background) {
-        if (!mix->custom_csc)
+        if (DRI_OUTPUT || !mix->custom_csc) {
             shared = create_shared_surface(dest_surf,
                                            video_surf,
                                            &mix->csc,
@@ -614,6 +622,8 @@ VdpStatus vdp_video_mixer_render(
                                            dst_vid_y0,
                                            dst_vid_width,
                                            dst_vid_height);
+        }
+
         if (!shared) {
             ret = dynamic_alloc_surface_data(dest_surf);
             if (ret) {
@@ -626,6 +636,8 @@ VdpStatus vdp_video_mixer_render(
                 return VDP_STATUS_RESOURCES;
             }
 
+            pthread_mutex_lock(&mix->dev->lock);
+
             host1x_gr2d_clear_rect_clipped(mix->dev->stream,
                                            dest_surf->pixbuf,
                                            bg_color,
@@ -635,11 +647,16 @@ VdpStatus vdp_video_mixer_render(
                                            dst_vid_x0 + dst_vid_width,
                                            dst_vid_y0 + dst_vid_height,
                                            true);
+
+            pthread_mutex_unlock(&mix->dev->lock);
+
             dest_surf->set_bg = false;
         }
     }
 
     if (!shared) {
+        pthread_mutex_lock(&mix->dev->lock);
+
         host1x_gr2d_surface_blit(mix->dev->stream,
                                  video_surf->pixbuf,
                                  dest_surf->pixbuf,
@@ -652,6 +669,8 @@ VdpStatus vdp_video_mixer_render(
                                  dst_vid_y0,
                                  dst_vid_width,
                                  dst_vid_height);
+
+        pthread_mutex_unlock(&mix->dev->lock);
     }
 
     while (layer_count--) {

@@ -148,6 +148,8 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
         }
     }
 
+    pixbuf->guard_enabled = !pixbuf_guard_disabled;
+
     host1x_pixelbuffer_setup_guard(pixbuf);
 
     return pixbuf;
@@ -159,6 +161,37 @@ error_cleanup:
     free(pixbuf);
 
     return NULL;
+}
+
+struct host1x_pixelbuffer *host1x_pixelbuffer_wrap(struct drm_tegra_bo **bos,
+                                                   unsigned width,
+                                                   unsigned height,
+                                                   unsigned pitch,
+                                                   unsigned pitch_uv,
+                                                   enum pixel_format format,
+                                                   enum layout_format layout)
+{
+    struct host1x_pixelbuffer *pixbuf;
+
+    pixbuf = calloc(1, sizeof(*pixbuf));
+    if (!pixbuf)
+        return NULL;
+
+    pixbuf->pitch = pitch;
+    pixbuf->pitch_uv = pitch_uv;
+    pixbuf->width = width;
+    pixbuf->height = height;
+    pixbuf->format = format;
+    pixbuf->layout = layout;
+
+    pixbuf->bo = bos[0];
+
+    if (format == PIX_BUF_FMT_YV12) {
+        pixbuf->bos[1] = bos[1];
+        pixbuf->bos[2] = bos[2];
+    }
+
+    return pixbuf;
 }
 
 void host1x_pixelbuffer_free(struct host1x_pixelbuffer *pixbuf)
@@ -249,7 +282,7 @@ int host1x_pixelbuffer_setup_guard(struct host1x_pixelbuffer *pixbuf)
     unsigned i;
     int ret;
 
-    if (pixbuf_guard_disabled)
+    if (pixbuf_guard_disabled || !pixbuf->guard_enabled)
         return 0;
 
     for (i = 0; i < PIX_BUF_FORMAT_PLANES_NB(pixbuf->format); i++) {
@@ -310,7 +343,7 @@ int host1x_pixelbuffer_check_guard(struct host1x_pixelbuffer *pixbuf)
     unsigned i;
     int ret;
 
-    if (pixbuf_guard_disabled)
+    if (pixbuf_guard_disabled || !pixbuf->guard_enabled)
         return 0;
 
     for (i = 0; i < PIX_BUF_FORMAT_PLANES_NB(pixbuf->format); i++) {

@@ -266,11 +266,16 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     }
 
     if (source_surface == VDP_INVALID_HANDLE) {
+        pthread_mutex_lock(&dst_surf->dev->lock);
+
         ret = host1x_gr2d_clear_rect(dst_surf->dev->stream,
                                      dst_surf->pixbuf,
                                      0xFFFFFFFF,
                                      dst_x0, dst_y0,
                                      dst_width, dst_height);
+
+        pthread_mutex_unlock(&dst_surf->dev->lock);
+
         if (ret == 0) {
             put_surface(dst_surf);
             put_surface(src_surf);
@@ -336,6 +341,8 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     }
 
     if (!need_rotate) {
+        pthread_mutex_lock(&dst_surf->dev->lock);
+
         host1x_gr2d_surface_blit(dst_surf->dev->stream,
                                  src_surf->pixbuf,
                                  dst_surf->pixbuf,
@@ -344,6 +351,9 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                                  src_width, src_height,
                                  dst_x0, dst_y0,
                                  dst_width, dst_height);
+
+        pthread_mutex_unlock(&dst_surf->dev->lock);
+
         put_surface(dst_surf);
         put_surface(src_surf);
         return VDP_STATUS_OK;
