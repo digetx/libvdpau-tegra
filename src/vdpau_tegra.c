@@ -21,6 +21,8 @@
 
 pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;
 
+bool tegra_vdpau_debug;
+
 static tegra_device  * tegra_devices[MAX_DEVICES_NB];
 static tegra_decoder * tegra_decoders[MAX_DECODERS_NB];
 static tegra_mixer   * tegra_mixers[MAX_MIXERS_NB];
@@ -194,6 +196,9 @@ void replace_surface(tegra_surface *old_surf, tegra_surface *new_surf)
         assert(tegra_surfaces[old_surf->surface_id] == old_surf);
         new_surf->surface_id = old_surf->surface_id;
         old_surf->surface_id = MAX_SURFACES_NB;
+
+        DebugMsg("surface %u %p -> %p\n",
+                 new_surf->surface_id, new_surf, old_surf);
 
         tegra_surfaces[new_surf->surface_id] = new_surf;
     }
@@ -505,6 +510,8 @@ VdpStatus unref_device(tegra_device *dev)
     if (!atomic_dec_and_test(&dev->refcnt))
         return VDP_STATUS_OK;
 
+    DebugMsg("device closed\n");
+
     XvUngrabPort(dev->display, dev->xv_port, CurrentTime);
     tegra_stream_destroy(dev->stream);
     drm_tegra_channel_close(dev->gr2d);
@@ -543,12 +550,18 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     XvImageFormatValues *fmt;
     VdpDevice i;
     drm_magic_t magic;
+    char *debug_str;
     unsigned int ver, rel, req, ev, err;
     unsigned int num_adaptors;
     int num_formats;
     int vde_fd = -1;
     int drm_fd = -1;
     int ret;
+
+    debug_str = getenv("VDPAU_TEGRA_DEBUG");
+    if (debug_str && strcmp(debug_str, "0")) {
+        tegra_vdpau_debug = true;
+    }
 
     drm_fd = drmOpen("tegra", NULL);
     if (drm_fd < 0) {

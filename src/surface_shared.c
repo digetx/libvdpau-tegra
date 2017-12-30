@@ -140,6 +140,9 @@ tegra_shared_surface *create_shared_surface(tegra_surface *disp,
     pthread_mutex_unlock(&video->lock);
     pthread_mutex_unlock(&shared_lock);
 
+    DebugMsg("%p disp %u video %u\n",
+             shared, disp->surface_id, video->surface_id);
+
     return shared;
 }
 
@@ -154,6 +157,11 @@ void unref_shared_surface(tegra_shared_surface *shared)
         return;
     }
 
+    DebugMsg("%p disp %u video %u\n",
+             shared,
+             shared->disp->surface_id,
+             shared->video->surface_id);
+
     unref_surface(shared->video);
     unref_surface(shared->disp);
 
@@ -164,6 +172,11 @@ void unref_shared_surface(tegra_shared_surface *shared)
 
 static void shared_surface_break_link_locked(tegra_shared_surface *shared)
 {
+    DebugMsg("%p disp %u video %u\n",
+             shared,
+             shared->disp->surface_id,
+             shared->video->surface_id);
+
     shared->disp->shared = NULL;
     shared->video->shared = NULL;
 }
@@ -179,6 +192,11 @@ tegra_surface * shared_surface_swap_video(tegra_surface *old)
     shared = old->shared;
     if (shared) {
         ref_surface(old);
+
+        DebugMsg("%p disp %u video %u\n",
+                 shared,
+                 shared->disp->surface_id,
+                 shared->video->surface_id);
     }
     pthread_mutex_unlock(&shared_lock);
 
@@ -236,6 +254,11 @@ int shared_surface_transfer_video(tegra_surface *disp)
 
     pthread_mutex_lock(&disp->dev->lock);
 
+    DebugMsg("%p disp %u video %u\n",
+             shared,
+             shared->disp->surface_id,
+             shared->video->surface_id);
+
     if (disp->set_bg) {
         host1x_gr2d_clear_rect_clipped(disp->dev->stream,
                                        disp->pixbuf,
@@ -291,6 +314,11 @@ void shared_surface_kill_disp(tegra_surface *disp)
 
     shared = disp->shared;
     if (shared) {
+        DebugMsg("%p disp %u video %u\n",
+                shared,
+                shared->disp->surface_id,
+                shared->video->surface_id);
+
         shared_surface_break_link_locked(shared);
     }
 

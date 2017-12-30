@@ -41,6 +41,8 @@ void pqt_update_dri_pixbuf(tegra_pqt *pqt)
         return;
     }
 
+    DebugMsg("width %d height %d\n", width, height);
+
     err = drm_tegra_bo_from_name(&bo, dev->drm, buf[0].names[0], 0);
     if (err) {
         return;

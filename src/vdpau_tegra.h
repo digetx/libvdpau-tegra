@@ -102,12 +102,21 @@
     fprintf(stderr, "%s:%d/%s(): " fmt, \
             __FILE__, __LINE__, __func__, ##args)
 
+#define DebugMsg(fmt, args...) \
+do { \
+    if (tegra_vdpau_debug) \
+        fprintf(stderr, "%s:%d/%s(): " fmt, \
+                __FILE__, __LINE__, __func__, ##args); \
+} while (0)
+
 #define CLAMP(_v, _vmin, _vmax) \
     (((_v) < (_vmin) ? (_vmin) : (((_v) > (_vmax)) ? (_vmax) : (_v))))
 
 #define UNIFIED_BUFFER  0
 
 #define DRI_OUTPUT      0
+
+extern bool tegra_vdpau_debug;
 
 extern VdpCSCMatrix CSC_BT_601;
 extern VdpCSCMatrix CSC_BT_709;

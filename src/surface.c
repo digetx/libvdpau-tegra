@@ -42,7 +42,12 @@ int dynamic_alloc_surface_data(tegra_surface *surf)
 
     pthread_mutex_lock(&surf->lock);
     if (!surf->data_allocated) {
+        DebugMsg("surface %u %p\n", surf->surface_id, surf);
+
         ret = alloc_surface_data(surf);
+    } else {
+        DebugMsg("surface %u %p.. already allocated\n",
+                 surf->surface_id, surf);
     }
     pthread_mutex_unlock(&surf->lock);
 
@@ -55,7 +60,12 @@ int dynamic_release_surface_data(tegra_surface *surf)
 
     pthread_mutex_lock(&surf->lock);
     if (surf->data_allocated) {
+        DebugMsg("surface %u %p\n", surf->surface_id, surf);
+
         ret = release_surface_data(surf);
+    } else {
+        DebugMsg("surface %u %p.. already released\n",
+                 surf->surface_id, surf);
     }
     surf->data_dirty = false;
     pthread_mutex_unlock(&surf->lock);
@@ -428,6 +438,7 @@ uint32_t create_surface(tegra_device *dev,
 
     if (surface_id != VDP_INVALID_HANDLE) {
         surf->surface_id = surface_id;
+        DebugMsg("surface %u %p\n", surface_id, surf);
     } else {
         destroy_surface(surf);
     }
@@ -446,6 +457,8 @@ VdpStatus unref_surface(tegra_surface *surf)
         return VDP_STATUS_OK;
     }
 
+    DebugMsg("surface %u %p\n", surf->surface_id, surf);
+
     dynamic_release_surface_data(surf);
     unref_device(surf->dev);
 
@@ -458,6 +471,8 @@ VdpStatus unref_surface(tegra_surface *surf)
 
 VdpStatus destroy_surface(tegra_surface *surf)
 {
+    DebugMsg("surface %u %p\n", surf->surface_id, surf);
+
     pthread_mutex_lock(&surf->lock);
     if (surf->flags & SURFACE_OUTPUT) {
         shared_surface_kill_disp(surf);
