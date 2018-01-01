@@ -85,7 +85,7 @@ int alloc_surface_data(tegra_surface *surf)
     XvImage *xv_img                     = NULL;
     struct tegra_vde_h264_frame *frame  = NULL;
     struct host1x_pixelbuffer *pixbuf   = NULL;
-    uint32_t stride                     = width * 4;
+    uint32_t stride                     = ALIGN(width * 4, 16);
     uint32_t *bo_flinks                 = NULL;
     uint32_t *pitches                   = NULL;
     int ret;
