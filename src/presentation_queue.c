@@ -19,196 +19,11 @@
 
 #include "vdpau_tegra.h"
 
-static VdpTime get_time(void)
-{
-    struct timespec tp;
-
-    if (clock_gettime(CLOCK_MONOTONIC, &tp) == -1)
-        abort();
-
-    return (VdpTime)tp.tv_sec * 1000000000ULL + (VdpTime)tp.tv_nsec;
-}
-
-static void pqt_display_surface_to_idle_state(tegra_pqt *pqt)
-{
-    tegra_surface *surf = pqt->disp_surf;
-
-    if (!surf) {
-        return;
-    }
-
-    pthread_mutex_lock(&surf->lock);
-    if (surf->status == VDP_PRESENTATION_QUEUE_STATUS_VISIBLE) {
-        surf->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
-        pthread_cond_signal(&surf->idle_cond);
-        pqt->disp_surf = NULL;
-
-        DebugMsg("visible surface %u became idle\n",
-                 surf->surface_id);
-    } else {
-        DebugMsg("trying to set invisible surface %u to idle\n",
-                 surf->surface_id);
-    }
-    pthread_mutex_unlock(&surf->lock);
-
-    unref_surface(surf);
-}
-
-static void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf)
-{
-    tegra_device *dev = pqt->dev;
-    CARD64 count;
-
-    DebugMsg("surface %u earliest_presentation_time %llu+\n",
-             surf->surface_id, surf->earliest_presentation_time);
-
-    if (!DRI_OUTPUT) {
-        if (surf->set_bg && surf->bg_color != pqt->bg_color) {
-            XSetWindowBackground(dev->display, pqt->drawable, surf->bg_color);
-            XClearWindow(dev->display, pqt->drawable);
-
-            pqt->bg_color = surf->bg_color;
-        }
-
-        if (surf->shared) {
-            DebugMsg("surface %u YUV overlay\n", surf->surface_id);
-
-            XvPutImage(dev->display, dev->xv_port,
-                       pqt->drawable, pqt->gc,
-                       surf->shared->xv_img,
-                       surf->shared->src_x0,
-                       surf->shared->src_y0,
-                       surf->shared->src_width,
-                       surf->shared->src_height,
-                       surf->shared->dst_x0,
-                       surf->shared->dst_y0,
-                       surf->shared->dst_width,
-                       surf->shared->dst_height);
-        } else if (surf->xv_img) {
-            DebugMsg("surface %u RGB overlay\n", surf->surface_id);
-
-            XvPutImage(dev->display, dev->xv_port,
-                       pqt->drawable, pqt->gc,
-                       surf->xv_img,
-                       0,
-                       0,
-                       surf->disp_width,
-                       surf->disp_height,
-                       0,
-                       0,
-                       surf->disp_width,
-                       surf->disp_height);
-        }
-
-        XSync(dev->display, 0);
-    } else if (pqt->dri_pixbuf) {
-        DebugMsg("surface %u DRI\n", surf->surface_id);
-
-        DRI2SwapBuffers(dev->display, pqt->drawable, 0, 0, 0, &count);
-    }
-
-    pthread_mutex_lock(&surf->lock);
-    surf->first_presentation_time = get_time();
-    surf->status = VDP_PRESENTATION_QUEUE_STATUS_VISIBLE;
-
-    if (pqt->disp_surf != surf) {
-        pqt_display_surface_to_idle_state(pqt);
-        pqt->disp_surf = surf;
-    }
-    pthread_mutex_unlock(&surf->lock);
-
-    DebugMsg("surface %u-\n", surf->surface_id);
-}
-
-static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
-{
-    int ret;
-
-    if (!DRI_OUTPUT) {
-        return;
-    }
-
-    if (surf->disp_width != pqt->dri_pixbuf->width ||
-            surf->disp_height != pqt->dri_pixbuf->height) {
-        pqt_update_dri_pixbuf(pqt);
-    }
-
-    if (!pqt->dri_pixbuf) {
-        return;
-    }
-
-    DebugMsg("surface %u+\n", surf->surface_id);
-
-    pthread_mutex_lock(&surf->lock);
-    pthread_mutex_lock(&pqt->dev->lock);
-
-    if (surf->shared) {
-        DebugMsg("surface %u transfer YUV\n", surf->surface_id);
-
-        if (surf->set_bg) {
-            ret = host1x_gr2d_clear_rect_clipped(surf->dev->stream,
-                                                 pqt->dri_pixbuf,
-                                                 surf->bg_color,
-                                                 0,
-                                                 0,
-                                                 pqt->dri_pixbuf->width,
-                                                 pqt->dri_pixbuf->height,
-                                                 surf->shared->dst_x0,
-                                                 surf->shared->dst_y0,
-                                                 surf->shared->dst_x0 + surf->shared->dst_width,
-                                                 surf->shared->dst_y0 + surf->shared->dst_height,
-                                                 true);
-            if (ret) {
-                ErrorMsg("setting BG failed %d\n", ret);
-            }
-        }
-
-        ret = host1x_gr2d_surface_blit(pqt->dev->stream,
-                                       surf->shared->video->pixbuf,
-                                       pqt->dri_pixbuf,
-                                       &surf->shared->csc,
-                                       surf->shared->src_x0,
-                                       surf->shared->src_y0,
-                                       surf->shared->src_width,
-                                       surf->shared->src_height,
-                                       surf->shared->dst_x0,
-                                       surf->shared->dst_y0,
-                                       surf->shared->dst_width,
-                                       surf->shared->dst_height);
-        if (ret) {
-            ErrorMsg("video transfer failed %d\n", ret);
-        }
-    } else if (surf->pixbuf) {
-        DebugMsg("surface %u transfer RGB\n", surf->surface_id);
-
-        ret = host1x_gr2d_surface_blit(pqt->dev->stream,
-                                       surf->pixbuf,
-                                       pqt->dri_pixbuf,
-                                       &csc_rgb_default,
-                                       0,
-                                       0,
-                                       surf->disp_width,
-                                       surf->disp_height,
-                                       0,
-                                       0,
-                                       pqt->dri_pixbuf->width,
-                                       pqt->dri_pixbuf->height);
-        if (ret) {
-            ErrorMsg("video transfer failed %d\n", ret);
-        }
-    }
-
-    pthread_mutex_unlock(&pqt->dev->lock);
-    pthread_mutex_unlock(&surf->lock);
-
-    DebugMsg("surface %u-\n", surf->surface_id);
-}
-
 static void * presentation_queue_thr(void *opaque)
 {
     tegra_pq *pq = opaque;
     tegra_pqt *pqt = pq->pqt;
-    tegra_surface *surf, *tmp;
+    tegra_surface *surf, *tmp, *next;
     VdpTime earliest_time = UINT64_MAX;
     VdpTime time = UINT64_MAX;
     struct timespec tp;
@@ -226,6 +41,8 @@ static void * presentation_queue_thr(void *opaque)
         } else {
             ret = pthread_cond_wait(&pq->cond, &pq->lock);
         }
+
+        DebugMsg("wakeup %d\n", ret);
 
         if (pq->exit) {
             LIST_FOR_EACH_ENTRY_SAFE(surf, tmp, &pq->surf_list, list_item) {
@@ -266,6 +83,7 @@ static void * presentation_queue_thr(void *opaque)
                 if (surf->earliest_presentation_time < earliest_time) {
                     DebugMsg("surface %u in queue\n", surf->surface_id);
                     earliest_time = surf->earliest_presentation_time;
+                    next = surf;
                 }
 
                 pthread_mutex_unlock(&surf->lock);
@@ -275,13 +93,16 @@ static void * presentation_queue_thr(void *opaque)
             LIST_DEL(&surf->list_item);
             pthread_mutex_unlock(&surf->lock);
 
-            pqt_update_dri_buffer(pqt, surf);
-            pqt_display_surface(pqt, surf);
+            DebugMsg("displaying surface %u\n", surf->surface_id);
+
+            pqt_display_surface(pqt, surf, false);
         }
 
         time = earliest_time;
 
         if (time != UINT64_MAX) {
+            pqt_prepare_dri_surface(pqt, next);
+
             DebugMsg("next wake on %llu\n", time);
         } else {
             DebugMsg("going to sleep.. zZZ\n");
@@ -398,11 +219,6 @@ VdpStatus unref_presentation_queue(tegra_pq *pq)
     pqt = pq->pqt;
     dev = pqt->dev;
 
-    pthread_mutex_lock(&pq->lock);
-    pq->exit = true;
-    pthread_cond_signal(&pq->cond);
-    pthread_mutex_unlock(&pq->lock);
-
     pthread_join(pq->disp_thread, NULL);
 
     unref_queue_target(pqt);
@@ -423,6 +239,11 @@ VdpStatus vdp_presentation_queue_destroy(
 
     set_presentation_queue(presentation_queue, NULL);
     put_presentation_queue(pq);
+
+    pthread_mutex_lock(&pq->lock);
+    pq->exit = true;
+    pthread_cond_signal(&pq->cond);
+    pthread_mutex_unlock(&pq->lock);
 
     unref_presentation_queue(pq);
 
@@ -511,12 +332,9 @@ VdpStatus vdp_presentation_queue_display(
     surf->disp_width  = clip_width  ?: surf->width;
     surf->disp_height = clip_height ?: surf->height;
 
-    if (earliest_presentation_time == 0) {
+    if (earliest_presentation_time == 0 || !_Xglobal_lock) {
         pthread_mutex_lock(&pq->lock);
-
-        pqt_update_dri_buffer(pq->pqt, surf);
-        pqt_display_surface(pq->pqt, surf);
-
+        pqt_display_surface(pq->pqt, surf, false);
         pthread_mutex_unlock(&pq->lock);
 
         goto unlock_surf;
@@ -529,10 +347,8 @@ VdpStatus vdp_presentation_queue_display(
     surf->earliest_presentation_time = earliest_presentation_time;
 
     pthread_mutex_lock(&pq->lock);
-
     LIST_ADDTAIL(&surf->list_item, &pq->surf_list);
     pthread_cond_signal(&pq->cond);
-
     pthread_mutex_unlock(&pq->lock);
 
 unlock_surf:

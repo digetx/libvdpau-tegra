@@ -621,7 +621,7 @@ VdpStatus vdp_video_mixer_render(
     }
 
     if (!draw_background) {
-        if (DRI_OUTPUT || !mix->custom_csc) {
+        if (tegra_vdpau_force_dri || !mix->custom_csc) {
             shared = create_shared_surface(dest_surf,
                                            video_surf,
                                            &mix->csc,

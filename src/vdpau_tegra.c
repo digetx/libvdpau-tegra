@@ -22,6 +22,8 @@
 pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;
 
 bool tegra_vdpau_debug;
+bool tegra_vdpau_force_xv;
+bool tegra_vdpau_force_dri;
 
 static tegra_device  * tegra_devices[MAX_DEVICES_NB];
 static tegra_decoder * tegra_decoders[MAX_DECODERS_NB];
@@ -41,6 +43,16 @@ VdpCSCMatrix CSC_BT_709 = {
     { 1.164384f,-0.213249f,-0.532909f },
     { 1.164384f, 2.112402f, 0.000000f },
 };
+
+VdpTime get_time(void)
+{
+    struct timespec tp;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &tp) != 0)
+        ErrorMsg("failed\n");
+
+    return (VdpTime)tp.tv_sec * 1000000000ULL + (VdpTime)tp.tv_nsec;
+}
 
 tegra_decoder * __get_decoder(VdpDecoder decoder)
 {
@@ -561,6 +573,16 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     debug_str = getenv("VDPAU_TEGRA_DEBUG");
     if (debug_str && strcmp(debug_str, "0")) {
         tegra_vdpau_debug = true;
+    }
+
+    debug_str = getenv("VDPAU_TEGRA_FORCE_XV");
+    if (debug_str && strcmp(debug_str, "0")) {
+        tegra_vdpau_force_xv = true;
+    }
+
+    debug_str = getenv("VDPAU_TEGRA_FORCE_DRI");
+    if (debug_str && strcmp(debug_str, "0")) {
+        tegra_vdpau_force_dri = true;
     }
 
     drm_fd = drmOpen("tegra", NULL);
