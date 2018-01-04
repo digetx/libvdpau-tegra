@@ -55,9 +55,14 @@ VO: [vdpau] 1280x720 vdpau[yuv420p]
 ```
 If you don't see anything related to VDPAU, it means that it doesn't work for some reason. Check that `/usr/lib/vdpau/libvdpau_tegra.so.1` exists, note that `VDPAU_DRIVER_PATH` must point to the directory containing the shared library, not the library file.
 
-# Resolving issues
+# Resolving issues:
 
 Debug messages could be enabled using these environment variables: `VDPAU_TRACE=1` `VDPAU_TEGRA_DEBUG=1`.
+
+Other environment variables:
+
+* `VDPAU_TEGRA_FORCE_XV=1` force display output to Xv overlay
+* `VDPAU_TEGRA_FORCE_DRI=1` force display output using DRI
 
 # Todo:
 
