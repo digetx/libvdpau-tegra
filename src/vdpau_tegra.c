@@ -524,7 +524,10 @@ VdpStatus unref_device(tegra_device *dev)
 
     DebugMsg("device closed\n");
 
-    XvUngrabPort(dev->display, dev->xv_port, CurrentTime);
+    if (dev->xv_port != -1) {
+        XvUngrabPort(dev->display, dev->xv_port, CurrentTime);
+    }
+
     tegra_stream_destroy(dev->stream);
     drm_tegra_channel_close(dev->gr2d);
     drm_tegra_close(dev->drm);
@@ -550,6 +553,73 @@ VdpStatus vdp_device_destroy(VdpDevice device)
     return unref_device(dev);
 }
 
+static int initialize_xv(Display *display, tegra_device *dev)
+{
+    XvAdaptorInfo *adaptor_info = NULL;
+    XvImageFormatValues *fmt;
+    unsigned int ver, rel, req, ev, err;
+    unsigned int num_adaptors;
+    int num_formats;
+    int ret;
+
+    ret = XvQueryExtension(display, &ver, &rel, &req, &ev, &err);
+    if (ret != Success) {
+        ErrorMsg("Xv is disabled in the Xorg driver\n");
+        goto err_cleanup;
+    }
+
+    ret = XvQueryAdaptors(display, DefaultRootWindow(display),
+                          &num_adaptors, &adaptor_info);
+    if (ret != Success) {
+        goto err_cleanup;
+    }
+
+    while (num_adaptors--) {
+        if (adaptor_info[num_adaptors].num_ports != 1)
+            continue;
+
+        if (!(adaptor_info[num_adaptors].type & XvImageMask))
+            continue;
+
+        fmt = XvListImageFormats(display, adaptor_info[num_adaptors].base_id,
+                                 &num_formats);
+
+        while (num_formats--) {
+            if (!strncmp(fmt[num_formats].guid, "PASSTHROUGH_YV12", 16) &&
+                    fmt[num_formats].id == FOURCC_PASSTHROUGH_YV12) {
+                XFree(fmt);
+                goto xv_detected;
+            }
+        }
+
+        XFree(fmt);
+    }
+
+    ErrorMsg("Opentegra Xv undetected\n");
+
+    goto err_cleanup;
+
+xv_detected:
+    ret = XvGrabPort(display, adaptor_info[num_adaptors].base_id, CurrentTime);
+    if (ret != Success) {
+        ErrorMsg("Xv port is busy\n");
+        goto err_cleanup;
+    }
+
+    dev->xv_port = adaptor_info[num_adaptors].base_id;
+
+err_cleanup:
+    if (adaptor_info) {
+        XvFreeAdaptorInfo(adaptor_info);
+    }
+
+    if (ret != Success) {
+        dev->xv_port = -1;
+    }
+
+    return ret;
+}
+
 EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
                                              int screen,
                                              VdpDevice *device,
@@ -558,14 +628,9 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     struct drm_tegra *drm = NULL;
     struct drm_tegra_channel *gr2d = NULL;
     struct tegra_stream *stream = NULL;
-    XvAdaptorInfo *adaptor_info = NULL;
-    XvImageFormatValues *fmt;
     VdpDevice i;
     drm_magic_t magic;
     char *debug_str;
-    unsigned int ver, rel, req, ev, err;
-    unsigned int num_adaptors;
-    int num_formats;
     int vde_fd = -1;
     int drm_fd = -1;
     int ret;
@@ -625,52 +690,7 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
         goto err_cleanup;
     }
 
-    ret = XvQueryExtension(display, &ver, &rel, &req, &ev, &err);
-    if (ret != Success) {
-        ErrorMsg("Xv is disabled in the Xorg driver\n");
-        goto err_cleanup;
-    }
-
-    ret = XvQueryAdaptors(display, DefaultRootWindow(display),
-                          &num_adaptors, &adaptor_info);
-    if (ret != Success) {
-        goto err_cleanup;
-    }
-
-    while (num_adaptors--) {
-        if (adaptor_info[num_adaptors].num_ports != 1)
-            continue;
-
-        if (!(adaptor_info[num_adaptors].type & XvImageMask))
-            continue;
-
-        fmt = XvListImageFormats(display, adaptor_info[num_adaptors].base_id,
-                                 &num_formats);
-
-        while (num_formats--) {
-            if (!strncmp(fmt[num_formats].guid, "PASSTHROUGH_YV12", 16) &&
-                    fmt[num_formats].id == FOURCC_PASSTHROUGH_YV12) {
-                goto xv_detected;
-            }
-        }
-
-        XFree(fmt);
-    }
-
-    ErrorMsg("Opentegra Xv undetected\n");
-
-    goto err_cleanup;
-
-xv_detected:
     pthread_mutex_lock(&global_lock);
-
-    XFree(fmt);
-
-    ret = XvGrabPort(display, adaptor_info[num_adaptors].base_id, CurrentTime);
-    if (ret != Success) {
-        ErrorMsg("Xv port is busy\n");
-        goto err_cleanup;
-    }
 
     for (i = 0; i < MAX_DEVICES_NB; i++) {
         if (tegra_devices[i] == NULL) {
@@ -688,7 +708,11 @@ xv_detected:
     pthread_mutex_init(&tegra_devices[i]->lock, NULL);
     atomic_set(&tegra_devices[i]->refcnt, 1);
 
-    tegra_devices[i]->xv_port = adaptor_info[num_adaptors].base_id;
+    if (initialize_xv(display, tegra_devices[i]) != Success) {
+        ErrorMsg("forcing DRI\n");
+        tegra_vdpau_force_dri = true;
+    }
+
     tegra_devices[i]->display = display;
     tegra_devices[i]->screen = screen;
     tegra_devices[i]->vde_fd = vde_fd;
@@ -700,8 +724,6 @@ xv_detected:
     *device = i;
     *get_proc_address = vdp_get_proc_address;
 
-    XvFreeAdaptorInfo(adaptor_info);
-
     return VDP_STATUS_OK;
 
 err_cleanup:
@@ -710,9 +732,6 @@ err_cleanup:
     drm_tegra_close(drm);
     close(drm_fd);
     free(stream);
-
-    if (adaptor_info)
-        XvFreeAdaptorInfo(adaptor_info);
 
     return VDP_STATUS_RESOURCES;
 }

@@ -221,7 +221,7 @@ int alloc_surface_data(tegra_surface *surf)
         }
     }
 
-    if (output) {
+    if (output && !tegra_vdpau_force_dri) {
         int format_id = -1;
 
         switch (rgba_format) {

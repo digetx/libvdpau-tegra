@@ -28,6 +28,10 @@ static XvImage * create_video_xv(tegra_surface *video)
     uint32_t *pitches;
     uint32_t *offsets;
 
+    if (tegra_vdpau_force_dri) {
+        return NULL;
+    }
+
     xv_img = XvCreateImage(video->dev->display, video->dev->xv_port,
                            FOURCC_PASSTHROUGH_YV12, NULL,
                            video->width, video->height);
@@ -110,7 +114,7 @@ tegra_shared_surface *create_shared_surface(tegra_surface *disp,
     shared->dst_width = dst_width;
     shared->dst_height = dst_height;
 
-    if (!shared->xv_img) {
+    if (!shared->xv_img && !tegra_vdpau_force_dri) {
         free(shared);
 
         pthread_mutex_unlock(&disp->lock);
@@ -165,8 +169,11 @@ void unref_shared_surface(tegra_shared_surface *shared)
     unref_surface(shared->video);
     unref_surface(shared->disp);
 
-    free(shared->xv_img->data);
-    XFree(shared->xv_img);
+    if (shared->xv_img) {
+        free(shared->xv_img->data);
+        XFree(shared->xv_img);
+    }
+
     free(shared);
 }
 
