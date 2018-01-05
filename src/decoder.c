@@ -139,9 +139,6 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
     memset(bitstream, 0x0, end - bitstream);
 
     ret = sync_dmabuf_write_end(*data_fd);
-
-    assert(ret == 0);
-
     if (ret) {
         free_data(*bo, *data_fd);
         return VDP_STATUS_ERROR;
@@ -150,22 +147,29 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
     bitstream = start;
     bitstream_init(reader, bitstream, total_size);
 
-    assert(bitstream[0] == 0x00);
-    assert(bitstream[1] == 0x00);
+    if (bitstream[0] != 0x00) {
+        ErrorMsg("Invalid NAL byte[0] %02X\n", bitstream[0]);
+    }
+
+    if(bitstream[1] != 0x00) {
+        ErrorMsg("Invalid NAL byte[1] %02X\n", bitstream[0]);
+    }
 
     if (bitstream[2] == 0x01) {
         bitstream_reader_inc_offset(reader, 4);
         return VDP_STATUS_OK;
     }
 
-    assert(bitstream[2] == 0x00);
+    if (bitstream[2] != 0x00) {
+        ErrorMsg("Invalid NAL byte[2] %02X\n", bitstream[2]);
+    }
 
     if (bitstream[3] == 0x01) {
         bitstream_reader_inc_offset(reader, 5);
         return VDP_STATUS_OK;
+    } else {
+        ErrorMsg("Invalid NAL byte[3] %02X\n", bitstream[3]);
     }
-
-    assert(0);
 
     return VDP_STATUS_ERROR;
 }
@@ -191,7 +195,9 @@ static int get_refs_sorted(struct tegra_vde_h264_frame *dpb_frames,
         surf = get_surface(ref->surface);
 
         if (!surf) {
-            assert(ref->surface == VDP_INVALID_HANDLE);
+            if (ref->surface != VDP_INVALID_HANDLE) {
+                ErrorMsg("invalid refs list\n");
+            }
             continue;
         }
 
@@ -215,9 +221,17 @@ static int get_refs_sorted(struct tegra_vde_h264_frame *dpb_frames,
         prev = NULL;
 
         while (1) {
-            assert(itr->ref_surf->pic_order_cnt != surf->pic_order_cnt);
-            assert(itr->ref_surf->pic_order_cnt != delim_pic_order_cnt);
-            assert(itr->ref_surf->pic_order_cnt > 0);
+            if (itr->ref_surf->pic_order_cnt == surf->pic_order_cnt) {
+                ErrorMsg("invalid pic_order_cnt\n");
+            }
+
+            if (itr->ref_surf->pic_order_cnt == delim_pic_order_cnt) {
+                ErrorMsg("invalid pic_order_cnt\n");
+            }
+
+            if (itr->ref_surf->pic_order_cnt <= 0) {
+                ErrorMsg("invalid pic_order_cnt\n");
+            }
 
             if (surf->pic_order_cnt < delim_pic_order_cnt) {
                 if (surf->pic_order_cnt > itr->ref_surf->pic_order_cnt) {
@@ -255,7 +269,9 @@ insert_node:
         put_surface(surf);
     }
 
-    assert(refs_num != 0);
+    if (!refs_num) {
+        ErrorMsg("invalid refs list\n");
+    }
 
     for (i = 0, itr = list_head; itr != NULL; i++, itr = itr->next) {
         dpb_frames[1 + i] = *itr->ref_surf->frame;
@@ -283,7 +299,9 @@ static int get_refs_dpb_order(struct tegra_vde_h264_frame *dpb_frames,
         surf = get_surface(ref->surface);
 
         if (!surf) {
-            assert(ref->surface == VDP_INVALID_HANDLE);
+            if (ref->surface != VDP_INVALID_HANDLE) {
+                ErrorMsg("invalid DPB frames list\n");
+            }
             continue;
         }
 
@@ -298,7 +316,9 @@ static int get_refs_dpb_order(struct tegra_vde_h264_frame *dpb_frames,
         put_surface(surf);
     }
 
-    assert(refs_num != 0);
+    if (!refs_num) {
+        ErrorMsg("invalid DPB frames list\n");
+    }
 
     return refs_num;
 }
@@ -340,10 +360,10 @@ static int get_slice_type(bitstream_reader *reader)
 
     slice_type = bitstream_read_ue(reader);
 
-    assert(slice_type < 10);
-
-    if (0) {
-        printf("slice_type %s\n", slice_type_str(slice_type));
+    if (slice_type >= 10) {
+        ErrorMsg("invalid slice_type %u\n", slice_type);
+    } else {
+        DebugMsg("slice_type %s\n", slice_type_str(slice_type));
     }
 
     return slice_type;
@@ -398,7 +418,11 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
                 delim_pic_order_cnt = surf->pic_order_cnt;
             }
 
-            assert(delim_pic_order_cnt > 0);
+            if (delim_pic_order_cnt <= 0) {
+                ErrorMsg("invalid delim_pic_order_cnt %d\n",
+                         delim_pic_order_cnt);
+                return VDP_STATUS_ERROR;
+            }
 
             refs_num = get_refs_sorted(dpb_frames, info->referenceFrames,
                                        frame_num_wrap, max_frame_num,

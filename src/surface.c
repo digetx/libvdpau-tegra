@@ -487,7 +487,7 @@ VdpStatus destroy_surface(tegra_surface *surf)
 
 int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type)
 {
-    int ret;
+    int ret = 0;
 
     switch (type) {
     case READ_START:
@@ -518,9 +518,8 @@ int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type)
         break;
     }
 
-    assert(ret == 0);
-
     if (ret) {
+        ErrorMsg("dmabuf sync %u failed %d\n", type, ret);
         return ret;
     }
 
@@ -539,9 +538,8 @@ int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type)
         break;
     }
 
-    assert(ret == 0);
-
     if (ret) {
+        ErrorMsg("dmabuf sync %u failed %d\n", type, ret);
         return ret;
     }
 
@@ -560,9 +558,8 @@ int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type)
         break;
     }
 
-    assert(ret == 0);
-
     if (ret) {
+        ErrorMsg("dmabuf sync %u failed %d\n", type, ret);
         return ret;
     }
 

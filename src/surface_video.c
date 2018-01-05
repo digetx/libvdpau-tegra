@@ -170,7 +170,9 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
                      0, 0,
                      0, 0,
                      width, height);
-    assert(ret != 0);
+    if (!ret) {
+        ErrorMsg("pixman_blt failed\n");
+    }
 
     /* Copy chroma blue plane.  */
     ret = pixman_blt(surf->cb_data, dst_cb,
@@ -179,7 +181,9 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
                      0, 0,
                      0, 0,
                      width / 2, height / 2);
-    assert(ret != 0);
+    if (!ret) {
+        ErrorMsg("pixman_blt failed\n");
+    }
 
     /* Copy chroma red plane.  */
     ret = pixman_blt(surf->cr_data, dst_cr,
@@ -188,7 +192,9 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
                      0, 0,
                      0, 0,
                      width / 2, height / 2);
-    assert(ret != 0);
+    if (!ret) {
+        ErrorMsg("pixman_blt failed\n");
+    }
 
     ret = sync_video_frame_dmabufs(surf, READ_END);
 
@@ -257,7 +263,9 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
                      0, 0,
                      0, 0,
                      width, height);
-    assert(ret != 0);
+    if (!ret) {
+        ErrorMsg("pixman_blt failed\n");
+    }
 
     /* Copy chroma blue plane.  */
     ret = pixman_blt(src_cb, surf->cb_data,
@@ -266,7 +274,9 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
                      0, 0,
                      0, 0,
                      width / 2, height / 2);
-    assert(ret != 0);
+    if (!ret) {
+        ErrorMsg("pixman_blt failed\n");
+    }
 
     /* Copy chroma red plane.  */
     ret = pixman_blt(src_cr, surf->cr_data,
@@ -275,7 +285,9 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
                      0, 0,
                      0, 0,
                      width / 2, height / 2);
-    assert(ret != 0);
+    if (!ret) {
+        ErrorMsg("pixman_blt failed\n");
+    }
 
     host1x_pixelbuffer_check_guard(surf->pixbuf);
 

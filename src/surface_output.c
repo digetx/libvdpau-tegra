@@ -249,9 +249,11 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     dst_data = pixman_image_get_data(dst_pix);
 
     pfmt = pixman_image_get_format(dst_pix);
-    ret = pixman_format_supported_destination(pfmt);
 
-    assert(ret != 0);
+    ret = pixman_format_supported_destination(pfmt);
+    if (!ret) {
+        ErrorMsg("pixman_format_supported_destination failed\n");
+    }
 
     if (destination_rect != NULL) {
         dst_width = destination_rect->x1 - destination_rect->x0;
@@ -289,8 +291,9 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                           dst_x0, dst_y0,
                           dst_width, dst_height,
                           0xFFFFFFFF);
-
-        assert(ret != 0);
+        if (!ret) {
+            ErrorMsg("pixman_fill failed\n");
+        }
 
         put_surface(dst_surf);
         put_surface(src_surf);
@@ -309,9 +312,11 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     src_pix = src_surf->pix;
 
     pfmt = pixman_image_get_format(src_pix);
-    ret = pixman_format_supported_destination(pfmt);
 
-    assert(ret != 0);
+    ret = pixman_format_supported_destination(pfmt);
+    if (!ret) {
+        ErrorMsg("pixman_format_supported_destination failed\n");
+    }
 
     if (source_rect != NULL) {
         src_width = source_rect->x1 - source_rect->x0;
@@ -325,7 +330,9 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         src_y0 = 0;
     }
 
-    assert(!(flags & ~3ul));
+    if (flags & ~3ul) {
+        ErrorMsg("invalid flags %X\n", flags);
+    }
 
     switch (flags & 3) {
     case VDP_OUTPUT_SURFACE_RENDER_ROTATE_90:
@@ -381,7 +388,9 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
             break;
         }
 
-        assert(ret != 0);
+        if (!ret) {
+            ErrorMsg("pixman_transform_rotate failed\n");
+        }
 
         if (need_scale) {
             double scalew = (double)src_width / (double)dst_width;
@@ -390,13 +399,15 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
             ret = pixman_transform_scale(&transform, NULL,
                                          pixman_double_to_fixed(scalew),
                                          pixman_double_to_fixed(scaleh));
-
-            assert(ret != 0);
+            if (!ret) {
+                ErrorMsg("pixman_transform_scale failed\n");
+            }
         }
 
         ret = pixman_image_set_transform(src_pix, &transform);
-
-        assert(ret != 0);
+        if (!ret) {
+            ErrorMsg("pixman_image_set_transform failed\n");
+        }
     }
 
     pixman_image_composite(PIXMAN_OP_SRC,
@@ -410,7 +421,9 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
     if (need_scale || need_rotate) {
         ret = pixman_image_set_transform(src_pix, NULL);
-        assert(ret != 0);
+        if (!ret) {
+            ErrorMsg("pixman_image_set_transform failed\n");
+        }
     }
 
     put_surface(dst_surf);

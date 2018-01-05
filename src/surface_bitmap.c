@@ -173,8 +173,9 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
                      0, 0,
                      x0, y0,
                      width, height);
-
-    assert(ret != 0);
+    if (!ret) {
+        ErrorMsg("pixman_blt failed\n");
+    }
 
     host1x_pixelbuffer_check_guard(surf->pixbuf);
 
