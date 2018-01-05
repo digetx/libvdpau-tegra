@@ -267,7 +267,7 @@ VdpStatus vdp_presentation_queue_set_background_color(
 
 VdpStatus vdp_presentation_queue_get_background_color(
                                         VdpPresentationQueue presentation_queue,
-                                        VdpColor *const background_color)
+                                        VdpColor *background_color)
 {
     tegra_pq *pq = get_presentation_queue(presentation_queue);
 
