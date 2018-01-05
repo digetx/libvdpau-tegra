@@ -125,7 +125,11 @@ tegra_shared_surface *create_shared_surface(tegra_surface *disp,
 
     ret = dynamic_release_surface_data(disp);
     if (ret) {
-        free(shared->xv_img);
+        if (shared->xv_img) {
+            free(shared->xv_img->data);
+            XFree(shared->xv_img);
+        }
+
         free(shared);
 
         pthread_mutex_unlock(&disp->lock);
