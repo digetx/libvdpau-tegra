@@ -109,6 +109,10 @@ static void pqt_display_dri(tegra_pqt *pqt, tegra_surface *surf)
     if (pqt->dri_prep_surf == surf) {
         pqt->dri_prep_surf = NULL;
     }
+
+    if (surf->set_bg) {
+        pqt->bg_color = surf->bg_color;
+    }
 }
 
 static void pqt_display_xv(tegra_pqt *pqt, tegra_surface *surf)
@@ -170,7 +174,7 @@ static void transit_display_to_xv(tegra_pqt *pqt)
     DRI2GetMSC(dev->display, pqt->drawable, &ust, &msc, &sbc);
     DRI2WaitMSC(dev->display, pqt->drawable, msc + 1, 1, 1, &ust, &msc, &sbc);
 
-    XSetWindowBackground(dev->display, pqt->drawable, surf->bg_color);
+    XSetWindowBackground(dev->display, pqt->drawable, pqt->bg_color);
     XClearWindow(dev->display, pqt->drawable);
 }
 
