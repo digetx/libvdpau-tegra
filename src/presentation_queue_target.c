@@ -423,6 +423,8 @@ static void * pqt_x11_event_thr(void *opaque)
                 win_move = false;
             }
 
+            XPutBackEvent(dev->display, &event);
+
             if (win_move) {
                 pthread_mutex_lock(&pqt->disp_lock);
 
