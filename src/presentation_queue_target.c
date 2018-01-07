@@ -253,18 +253,15 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
     } else if (surf->pixbuf) {
         DebugMsg("surface %u transfer RGB\n", surf->surface_id);
 
-        ret = host1x_gr2d_surface_blit(pqt->dev->stream,
-                                       surf->pixbuf,
-                                       pqt->dri_pixbuf,
-                                       &csc_rgb_default,
-                                       0,
-                                       0,
-                                       surf->disp_width,
-                                       surf->disp_height,
-                                       0,
-                                       0,
-                                       pqt->dri_pixbuf->width,
-                                       pqt->dri_pixbuf->height);
+        ret = host1x_gr2d_blit(pqt->dev->stream,
+                               surf->pixbuf,
+                               pqt->dri_pixbuf,
+                               0,
+                               0,
+                               0,
+                               0,
+                               surf->disp_width,
+                               surf->disp_height);
         if (ret) {
             ErrorMsg("video transfer failed %d\n", ret);
         }
