@@ -186,7 +186,7 @@ int tegra_stream_push_reloc(struct tegra_stream *stream,
     }
 
     ret = drm_tegra_pushbuf_relocate(stream->buffer.pushbuf,
-                                     bo, offset, 0);
+                                     bo, offset, 0, true);
     if (ret != 0) {
         stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
         ErrorMsg("drm_tegra_pushbuf_relocate() failed %d\n", ret);
@@ -232,17 +232,17 @@ int tegra_stream_push(struct tegra_stream *stream, uint32_t word)
 
 int tegra_stream_push_setclass(struct tegra_stream *stream, unsigned class_id)
 {
-    int result;
+    int ret;
 
     if (stream->class_id == class_id)
         return 0;
 
-    result = tegra_stream_push(stream, HOST1X_OPCODE_SETCL(0, class_id, 0));
+    ret = drm_tegra_job_set_class(stream->job, class_id);
 
-    if (result == 0)
+    if (ret == 0)
         stream->class_id = class_id;
 
-    return result;
+    return ret;
 }
 
 /*
