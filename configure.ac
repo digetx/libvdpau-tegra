@@ -9,6 +9,8 @@ AC_CONFIG_AUX_DIR(.)
 
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 
+AM_DISABLE_STATIC
+
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_INSTALL
