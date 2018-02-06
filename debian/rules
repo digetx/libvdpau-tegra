@@ -1,0 +1,12 @@
+#!/usr/bin/make -f
+
+# Kill *.la files, and forget no-one:
+override_dh_install:
+	find debian/libvdpau-tegra -name '*.la' -delete
+	dh_install
+
+override_dh_makeshlibs:
+	dh_makeshlibs -n
+
+%:
+	dh $@ --with autoreconf

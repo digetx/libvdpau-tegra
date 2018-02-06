@@ -1,0 +1,5 @@
+libvdpau-tegra (9999-grate0) xenial; urgency=medium
+
+  * Initial release
+
+ -- Dmitry Osipenko <digetx@gmail.com>  Fri, 12 Jan 2018 20:25:53 +0000
