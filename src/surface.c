@@ -322,6 +322,8 @@ int release_surface_data(tegra_surface *surf)
 
     if (surf->frame != NULL) {
         drm_tegra_bo_unref(surf->aux_bo);
+        surf->aux_bo = NULL;
+
         close(surf->frame->y_fd);
         close(surf->frame->cb_fd);
         close(surf->frame->cr_fd);
@@ -335,6 +337,8 @@ int release_surface_data(tegra_surface *surf)
         surf->y_data = NULL;
         surf->cb_data = NULL;
         surf->cr_data = NULL;
+
+        surf->frame = NULL;
     }
 
     surf->data_allocated = false;
