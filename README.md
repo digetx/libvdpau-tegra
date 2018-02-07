@@ -22,12 +22,22 @@ supports CAVLC H.264 videos only. The accelerated video output works without the
 Usage of the most recent mainline upstream Linux kernel is very recommended, not all DRM fixes are backportable and some usability-critical features may be missed in older kernels.
 
 # Installation:
+
+### From sources
+
 ```
-$ sh autogen.sh
-$ sh configure --prefix=/
+$ sh autogen.sh --prefix=/
 $ make
 $ make install
 ```
+
+### Ubuntu
+
+Add this PPA https://launchpad.net/~grate-driver/+archive/ubuntu/ppa and `apt-get install libvdpau-tegra`.
+
+### Gentoo
+
+Add this overlay https://github.com/grate-driver/grate-overlay and `emerge libvdpau-tegra-driver`.
 
 # Usage example:
 
