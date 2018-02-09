@@ -4,6 +4,7 @@
 override_dh_install:
 	find debian/libvdpau-tegra -name '*.la' -delete
 	dh_install
+	dh_installudev
 
 override_dh_makeshlibs:
 	dh_makeshlibs -n
