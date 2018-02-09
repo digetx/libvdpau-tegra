@@ -39,6 +39,8 @@ PKG_CHECK_MODULES(XV, xv)
 AC_SUBST(XV_CFLAGS)
 AC_SUBST(XV_LIBS)
 
+PKG_CHECK_VAR([udevdir], [udev], [udevdir], [], [udevdir=/lib/udev])
+
 # Checks for libraries.
 AC_CHECK_LIB([m], [sin])
 
