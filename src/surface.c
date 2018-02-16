@@ -146,7 +146,7 @@ int alloc_surface_data(tegra_surface *surf)
         pixbuf = host1x_pixelbuffer_create(dev->drm,
                                            width, ALIGN(height, 16),
                                            ALIGN(width, 16),
-                                           ALIGN(width / 2, 8),
+                                           ALIGN(width, 32) / 2,
                                            PIX_BUF_FMT_YV12,
                                            PIX_BUF_LAYOUT_LINEAR);
         if (pixbuf == NULL) {
