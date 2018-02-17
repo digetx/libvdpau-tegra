@@ -95,7 +95,7 @@ static void * presentation_queue_thr(void *opaque)
 
             DebugMsg("displaying surface %u\n", surf->surface_id);
 
-            pqt_display_surface(pqt, surf, false);
+            pqt_display_surface(pqt, surf, true, false);
         }
 
         time = earliest_time;
@@ -334,7 +334,7 @@ VdpStatus vdp_presentation_queue_display(
 
     if (earliest_presentation_time == 0 || !_Xglobal_lock) {
         pthread_mutex_lock(&pq->lock);
-        pqt_display_surface(pq->pqt, surf, false);
+        pqt_display_surface(pq->pqt, surf, true, false);
         pthread_mutex_unlock(&pq->lock);
 
         goto unlock_surf;

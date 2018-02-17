@@ -98,12 +98,15 @@ static void pqt_update_dri_pixbuf(tegra_pqt *pqt)
 static void pqt_display_dri(tegra_pqt *pqt, tegra_surface *surf)
 {
     tegra_device *dev = pqt->dev;
+    CARD64 ust, msc, sbc;
     CARD64 count;
 
     DebugMsg("surface %u DRI\n", surf->surface_id);
 
     pthread_mutex_lock(&dev->lock);
+    DRI2GetMSC(dev->display, pqt->drawable, &ust, &msc, &sbc);
     DRI2SwapBuffers(dev->display, pqt->drawable, 0, 0, 0, &count);
+    DRI2WaitMSC(dev->display, pqt->drawable, msc + 1, 1, 1, &ust, &msc, &sbc);
     pthread_mutex_unlock(&dev->lock);
 
     if (pqt->dri_prep_surf == surf) {
@@ -165,17 +168,11 @@ static void transit_display_to_xv(tegra_pqt *pqt)
 {
     tegra_surface *surf = pqt->disp_surf;
     tegra_device *dev = pqt->dev;
-    CARD64 ust, msc, sbc;
 
     DebugMsg("surface %u\n", surf->surface_id);
 
-    XSync(dev->display, 0);
-
-    DRI2GetMSC(dev->display, pqt->drawable, &ust, &msc, &sbc);
-    DRI2WaitMSC(dev->display, pqt->drawable, msc + 1, 1, 1, &ust, &msc, &sbc);
-
-    XSetWindowBackground(dev->display, pqt->drawable, pqt->bg_color);
     XClearWindow(dev->display, pqt->drawable);
+    XSync(dev->display, 0);
 }
 
 static void transit_display_to_dri(tegra_pqt *pqt)
@@ -296,7 +293,7 @@ void pqt_prepare_dri_surface(tegra_pqt *pqt, tegra_surface *surf)
 }
 
 void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf,
-                         bool update_state)
+                         bool update_status, bool transit)
 {
     DebugMsg("surface %u earliest_presentation_time %llu+\n",
              surf->surface_id, surf->earliest_presentation_time);
@@ -304,27 +301,29 @@ void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf,
     pthread_mutex_lock(&pqt->lock);
     pthread_mutex_lock(&surf->lock);
 
-    surf->first_presentation_time = get_time();
-    surf->status = VDP_PRESENTATION_QUEUE_STATUS_VISIBLE;
-
     if (tegra_vdpau_force_dri || pqt->overlapped_current) {
         pqt_update_dri_buffer(pqt, surf);
         pqt_display_dri(pqt, surf);
 
-        if (update_state) {
+        if (transit) {
             transit_display_to_dri(pqt);
         }
     } else {
-        if (update_state) {
+        pqt_display_xv(pqt, surf);
+
+        if (transit) {
             transit_display_to_xv(pqt);
         }
-
-        pqt_display_xv(pqt, surf);
     }
 
     if (pqt->disp_surf != surf) {
         pqt_display_surface_to_idle_state(pqt);
         pqt->disp_surf = surf;
+    }
+
+    if (update_status) {
+        surf->first_presentation_time = get_time();
+        surf->status = VDP_PRESENTATION_QUEUE_STATUS_VISIBLE;
     }
 
     pthread_mutex_unlock(&surf->lock);
@@ -356,14 +355,14 @@ static void * pqt_display_thr(void *opaque)
             pqt->overlapped_current = overlapped;
 
             if (pqt->disp_surf) {
-                pqt_display_surface(pqt, pqt->disp_surf, true);
+                pqt_display_surface(pqt, pqt->disp_surf, false, true);
             }
         }
         if (pqt->win_move) {
             pqt->win_move = false;
 
             if (pqt->disp_surf) {
-                pqt_display_surface(pqt, pqt->disp_surf, false);
+                pqt_display_surface(pqt, pqt->disp_surf, false, false);
             }
         }
         pthread_mutex_unlock(&pqt->lock);
@@ -459,6 +458,7 @@ static bool initialize_dri2(tegra_pqt *pqt)
     }
 
     DRI2CreateDrawable(dev->display, pqt->drawable);
+    DRI2SwapInterval(dev->display, pqt->drawable, 1);
 
     pqt_update_dri_pixbuf(pqt);
 
