@@ -675,7 +675,6 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     ret = drm_tegra_channel_open(&gr2d, drm, DRM_TEGRA_GR2D);
     if (ret < 0) {
         ErrorMsg("failed to open 2D channel: %d\n", ret);
-        goto err_cleanup;
     }
 
     stream = calloc(1, sizeof(*stream));

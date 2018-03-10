@@ -136,6 +136,10 @@ int tegra_stream_begin(struct tegra_stream *stream)
 {
     int ret;
 
+    if (!stream->channel) {
+        return -1;
+    }
+
     /* check stream and its state */
     if (!(stream && stream->status == TEGRADRM_STREAM_FREE)) {
         ErrorMsg("Stream status isn't FREE\n");
