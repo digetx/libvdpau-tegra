@@ -80,7 +80,7 @@ tegra_shared_surface *create_shared_surface(tegra_surface *disp,
     tegra_shared_surface *shared;
     int ret;
 
-    pthread_mutex_unlock(&shared_lock);
+    pthread_mutex_lock(&shared_lock);
     pthread_mutex_lock(&video->lock);
     pthread_mutex_lock(&disp->lock);
 
