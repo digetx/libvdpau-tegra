@@ -265,6 +265,18 @@ enum tegra_pqt_display {
     TEGRA_PQT_DRI,
 };
 
+struct tegra_pqt_bg_state {
+    uint32_t bg_color;
+    uint32_t colorkey;
+    uint32_t surf_x;
+    uint32_t surf_y;
+    uint32_t surf_w;
+    uint32_t surf_h;
+    uint32_t disp_w;
+    uint32_t disp_h;
+    bool shared;
+};
+
 typedef struct tegra_pqt {
     tegra_device *dev;
     tegra_surface *disp_surf;
@@ -277,7 +289,6 @@ typedef struct tegra_pqt {
     pthread_cond_t disp_cond;
     pthread_mutex_t disp_lock;
     pthread_mutex_t lock;
-    uint32_t bg_color;
     bool threads_running;
     bool dri2_drawable_created;
     bool overlapped_current;
@@ -285,6 +296,9 @@ typedef struct tegra_pqt {
     bool win_move;
     bool exit;
     tegra_surface *dri_prep_surf;
+    Atom xv_ckey_atom;
+    struct tegra_pqt_bg_state bg_old_state;
+    struct tegra_pqt_bg_state bg_new_state;
     enum tegra_pqt_display disp_state;
 } tegra_pqt;
 

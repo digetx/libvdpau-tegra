@@ -260,6 +260,18 @@ VdpStatus vdp_presentation_queue_set_background_color(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    if (!background_color) {
+        put_presentation_queue(pq);
+        return VDP_STATUS_ERROR;
+    }
+
+    pq->pqt->bg_new_state.colorkey = (int)(background_color->alpha * 255) << 24;
+    pq->pqt->bg_new_state.colorkey |= (int)(background_color->red * 255) << 16;
+    pq->pqt->bg_new_state.colorkey |= (int)(background_color->green * 255) << 8;
+    pq->pqt->bg_new_state.colorkey |= (int)(background_color->blue * 255) << 0;
+
+    DebugMsg("colorkey 0x%08x\n", pq->pqt->bg_new_state.colorkey);
+
     put_presentation_queue(pq);
 
     return VDP_STATUS_OK;
@@ -274,6 +286,16 @@ VdpStatus vdp_presentation_queue_get_background_color(
     if (pq == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
+
+    if (!background_color) {
+        put_presentation_queue(pq);
+        return VDP_STATUS_ERROR;
+    }
+
+    background_color->alpha = (pq->pqt->bg_new_state.colorkey >> 24) / 255.0f;
+    background_color->red   = ((pq->pqt->bg_new_state.colorkey >> 16) & 0xff) / 255.0f;
+    background_color->green = ((pq->pqt->bg_new_state.colorkey >> 8) & 0xff) / 255.0f;
+    background_color->blue  = ((pq->pqt->bg_new_state.colorkey >> 0) & 0xff) / 255.0f;
 
     put_presentation_queue(pq);
 
