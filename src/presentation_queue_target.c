@@ -213,7 +213,132 @@ static void pqt_display_dri(tegra_pqt *pqt, tegra_surface *surf)
     }
 
     if (surf->set_bg) {
-        pqt->bg_color = surf->bg_color;
+        pqt->bg_new_state.bg_color = surf->bg_color;
+    }
+}
+
+static bool pqt_update_background_state(tegra_pqt *pqt, tegra_surface *surf)
+{
+    if (surf->shared) {
+        pqt->bg_new_state.surf_x = surf->shared->dst_x0;
+        pqt->bg_new_state.surf_y = surf->shared->dst_y0;
+        pqt->bg_new_state.surf_w = surf->shared->dst_width;
+        pqt->bg_new_state.surf_h = surf->shared->dst_height;
+        pqt->bg_new_state.shared = true;
+    } else {
+        pqt->bg_new_state.shared = false;
+    }
+
+    if (surf->set_bg) {
+        pqt->bg_new_state.bg_color = surf->bg_color;
+    }
+
+    pqt->bg_new_state.disp_w = surf->disp_width;
+    pqt->bg_new_state.disp_h = surf->disp_height;
+
+    if (memcmp(&pqt->bg_new_state, &pqt->bg_old_state,
+               sizeof(pqt->bg_new_state)) != 0) {
+
+        return true;
+    }
+
+    return false;
+}
+
+static void pqt_draw_borders(tegra_pqt *pqt, tegra_surface *surf)
+{
+    tegra_device *dev = pqt->dev;
+    struct tegra_pqt_bg_state *bgs;
+    int32_t w_right;
+    int32_t w_left;
+    int32_t h_top;
+    int32_t h_bottom;
+
+    bgs = &pqt->bg_new_state;
+
+    if (!bgs->shared) {
+        return;
+    }
+
+    w_left   = bgs->surf_x;
+    w_right  = bgs->disp_w - bgs->surf_x - bgs->surf_w;
+    h_top    = bgs->surf_y;
+    h_bottom = bgs->disp_h - bgs->surf_y - bgs->surf_h;
+
+    if (w_right < 0 || h_bottom < 0) {
+        return;
+    }
+
+    if (w_left || w_right || h_top || h_bottom) {
+        XSetForeground(dev->display, pqt->gc, bgs->bg_color);
+    }
+
+    if (w_left) {
+        XFillRectangle(dev->display, pqt->drawable, pqt->gc,
+                       0, 0, w_left, bgs->disp_h);
+    }
+
+    if (w_right) {
+        XFillRectangle(dev->display, pqt->drawable, pqt->gc,
+                       bgs->surf_x + bgs->surf_w,
+                       0, w_right, bgs->disp_h);
+    }
+
+    if (h_top) {
+        XFillRectangle(dev->display, pqt->drawable, pqt->gc,
+                       0, 0, bgs->disp_w , h_top);
+    }
+
+    if (h_bottom) {
+        XFillRectangle(dev->display, pqt->drawable, pqt->gc,
+                       0, bgs->surf_y + bgs->surf_h,
+                       bgs->disp_w , h_bottom);
+    }
+}
+
+static void pqt_draw_background(tegra_pqt *pqt, tegra_surface *surf)
+{
+    tegra_device *dev = pqt->dev;
+    uint32_t colorkey = 0;
+    int val, ret;
+
+    if (surf->rgba_format == VDP_RGBA_FORMAT_R8G8B8A8) {
+        colorkey |= (pqt->bg_new_state.colorkey & 0xff00ff00);
+        colorkey |= (pqt->bg_new_state.colorkey & 0xff0000) >> 16;
+        colorkey |= (pqt->bg_new_state.colorkey & 0x0000ff) << 16;
+    } else {
+        colorkey = pqt->bg_new_state.colorkey;
+    }
+
+    XSetWindowBackground(dev->display, pqt->drawable, colorkey);
+    XClearWindow(dev->display, pqt->drawable);
+
+    if (pqt->xv_ckey_atom != None &&
+        pqt->bg_new_state.colorkey != pqt->bg_old_state.colorkey)
+    {
+        ret = XvSetPortAttribute(dev->display, dev->xv_port,
+                                 pqt->xv_ckey_atom,
+                                 pqt->bg_new_state.colorkey);
+        if (ret != Success) {
+            ErrorMsg("failed to set Xv colorkey %d\n", ret);
+
+            tegra_vdpau_force_xv = false;
+
+            if (!tegra_vdpau_force_dri) {
+                DebugMsg("Forcing DRI output\n");
+                tegra_vdpau_force_dri = true;
+            }
+        } else {
+            ret = XvGetPortAttribute(dev->display, dev->xv_port,
+                                     pqt->xv_ckey_atom, &val);
+            if (ret != Success) {
+                ErrorMsg("failed to get Xv colorkey %d\n", ret);
+            } else if (val != pqt->bg_new_state.colorkey) {
+                ErrorMsg("failed to set Xv colorkey, not changed\n");
+            } else {
+                DebugMsg("Xv colorkey changed to %08X\n", val);
+            }
+        }
     }
 }
 
@@ -240,13 +365,9 @@ static void pqt_display_xv(tegra_pqt *pqt, tegra_surface *surf, bool block)
 {
     tegra_device *dev = pqt->dev;
     bool no_surf = false;
+    bool upd_bg;
 
-    if (surf->set_bg && surf->bg_color != pqt->bg_color) {
-        XSetWindowBackground(dev->display, pqt->drawable, surf->bg_color);
-        XClearWindow(dev->display, pqt->drawable);
-
-        pqt->bg_color = surf->bg_color;
-    }
+    upd_bg = pqt_update_background_state(pqt, surf);
 
     if (surf->shared && surf->shared->xv_img) {
         DebugMsg("surface %u YUV overlay\n", surf->surface_id);
@@ -279,6 +400,12 @@ static void pqt_display_xv(tegra_pqt *pqt, tegra_surface *surf, bool block)
     } else {
         DebugMsg("surface %u is absent\n", surf->surface_id);
         no_surf = true;
+    }
+
+    if (upd_bg) {
+        pqt_draw_background(pqt, surf);
+        pqt_draw_borders(pqt, surf);
+        pqt->bg_old_state = pqt->bg_new_state;
     }
 
     if (no_surf) {
@@ -316,15 +443,11 @@ static void pqt_display_xv(tegra_pqt *pqt, tegra_surface *surf, bool block)
 static void transit_display_to_xv(tegra_pqt *pqt)
 {
     tegra_surface *surf = pqt->disp_surf;
-    tegra_device *dev = pqt->dev;
 
     if (surf)
         DebugMsg("surface %u\n", surf->surface_id);
 
     pqt_destroy_dri2_drawable(pqt);
-
-    XClearWindow(dev->display, pqt->drawable);
-    XSync(dev->display, 0);
 
     pqt->disp_state = TEGRA_PQT_XV;
 }
@@ -338,6 +461,7 @@ static void transit_display_to_dri(tegra_pqt *pqt)
         DebugMsg("surface %u\n", surf->surface_id);
 
     XvStopVideo(dev->display, dev->xv_port, pqt->drawable);
+    memset(&pqt->bg_old_state, 0, sizeof(pqt->bg_old_state));
 
     pqt->disp_state = TEGRA_PQT_DRI;
 }
@@ -705,6 +829,7 @@ VdpStatus vdp_presentation_queue_target_create_x11(
     pthread_attr_t thread_attrs;
     XSetWindowAttributes set;
     XWindowAttributes get;
+    int val, ret;
 
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -741,15 +866,42 @@ VdpStatus vdp_presentation_queue_target_create_x11(
     pqt->dev = dev;
     pqt->drawable = drawable;
     pqt->gc = XCreateGC(dev->display, drawable, 0, &values);
+    pqt->bg_new_state.colorkey = 0x200507;
 
     XGetWindowAttributes(dev->display, drawable, &get);
     set.event_mask  = get.all_event_masks;
     set.event_mask |= VisibilityChangeMask;
     set.event_mask |= StructureNotifyMask;
-    XChangeWindowAttributes(dev->display, drawable, CWEventMask, &set);
+    set.backing_store = Always;
+    XChangeWindowAttributes(dev->display, drawable,
+                            CWEventMask | CWBackingStore, &set);
 
-    XSetWindowBackground(dev->display, drawable, pqt->bg_color);
+    XSetWindowBackground(dev->display, drawable, 0x000000);
     XClearWindow(dev->display, drawable);
+
+    if (!tegra_vdpau_force_dri ||
+            (!tegra_vdpau_dri_xv_autoswitch && !dev->disp_rotated)) {
+        if (tegra_check_xv_atom(dev, "XV_COLORKEY"))
+            pqt->xv_ckey_atom = XInternAtom(dev->display, "XV_COLORKEY", false);
+
+        if (pqt->xv_ckey_atom != None) {
+            ret = XvGetPortAttribute(dev->display, dev->xv_port,
+                                     pqt->xv_ckey_atom, &val);
+            if (ret != Success)
+                pqt->xv_ckey_atom = None;
+        }
+
+        if (pqt->xv_ckey_atom != None) {
+            if (!tegra_vdpau_force_xv) {
+                DebugMsg("Color keying support detected, forcing Xv output\n");
+                tegra_vdpau_force_xv = true;
+                tegra_vdpau_force_dri = false;
+                tegra_vdpau_dri_xv_autoswitch = false;
+            }
+        } else {
+            ErrorMsg("XV_COLORKEY not available, update Opentegra Xorg driver and/or Linux kernel to get colorkey support\n");
+        }
+    }
 
     if (_Xglobal_lock && !(tegra_vdpau_force_xv || tegra_vdpau_force_dri)) {
         pthread_attr_init(&thread_attrs);
