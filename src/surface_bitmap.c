@@ -122,15 +122,27 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
                                              uint32_t const *source_pitches,
                                              VdpRect const *destination_rect)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf;
     pixman_image_t *pix;
     pixman_format_code_t pfmt;
     pixman_bool_t ret;
     void *surf_data;
-    uint32_t width, height;
-    uint32_t x0, y0;
+    uint32_t width = 0, height = 0;
+    uint32_t x0 = 0, y0 = 0;
     int err;
 
+    if (destination_rect) {
+        width = destination_rect->x1 - destination_rect->x0;
+        height = destination_rect->y1 - destination_rect->y0;
+        x0 = destination_rect->x0;
+        y0 = destination_rect->y0;
+
+        if (!width || !height) {
+            return VDP_STATUS_OK;
+        }
+    }
+
+    surf = get_surface(surface);
     if (surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
     }
@@ -160,11 +172,6 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
         height = pixman_image_get_height(pix);
         x0 = 0;
         y0 = 0;
-    } else {
-        width = destination_rect->x1 - destination_rect->x0;
-        height = destination_rect->y1 - destination_rect->y0;
-        x0 = destination_rect->x0;
-        y0 = destination_rect->y0;
     }
 
     ret = pixman_blt((void *)source_data[0], surf_data,
