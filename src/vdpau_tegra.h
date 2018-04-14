@@ -128,6 +128,24 @@ do { \
 #define CLAMP(_v, _vmin, _vmax) \
     (((_v) < (_vmin) ? (_vmin) : (((_v) > (_vmax)) ? (_vmax) : (_v))))
 
+#define FLOAT_TO_FIXED_6_12(fp) \
+    (((int32_t) (fp * 4096.0f + 0.5f)) & ((1 << 18) - 1))
+
+#define FLOAT_TO_FIXED_s2_8(fp) \
+    (((int32_t) (fp * 256.0f + 0.5f)) & ((1 << 11) - 1))
+
+#define FLOAT_TO_FIXED_s1_8(fp) \
+    (((int32_t) (fp * 256.0f + 0.5f)) & ((1 << 10) - 1))
+
+#define FLOAT_TO_FIXED_s2_7(fp) \
+    (((fp < 0.0f) << 9) | (((int32_t) (fabs(fp) * 128.0f + 0.5f)) & ((1 << 9) - 1)))
+
+#define FLOAT_TO_FIXED_s1_7(fp) \
+    (((fp < 0.0f) << 8) | (((int32_t) (fabs(fp) * 128.0f + 0.5f)) & ((1 << 8) - 1)))
+
+#define FLOAT_TO_FIXED_0_8(fp) \
+    (((int32_t) (fp * 256.0f + 0.5f)) & ((1 << 8) - 1))
+
 typedef union TegraXvVdpauInfo {
     struct {
         unsigned int visible : 1;
@@ -151,6 +169,17 @@ typedef struct {
 
 extern pthread_mutex_t global_lock;
 
+typedef struct tegra_csc {
+    struct host1x_csc_params gr2d;
+
+    struct xv_csc {
+        uint32_t yof_kyrgb;
+        uint32_t kur_kvr;
+        uint32_t kug_kvg;
+        uint32_t kub_kvb;
+    } xv;
+} tegra_csc;
+
 typedef struct tegra_device {
     struct drm_tegra *drm;
     struct drm_tegra_channel *gr3d;
@@ -170,6 +199,18 @@ typedef struct tegra_device {
     int drm_fd;
 
     Atom xvVdpauInfo;
+
+    struct xv_csc_controls {
+        Atom xvCSC_YOF_KYRGB;
+        Atom xvCSC_KUR_KVR;
+        Atom xvCSC_KUG_KVG;
+        Atom xvCSC_KUB_KVB;
+        Atom xvCSC_update;
+        tegra_csc old;
+        bool applied;
+        bool inited;
+        bool ready;
+    } xv_csc;
 } tegra_device;
 
 struct tegra_surface;
@@ -178,7 +219,7 @@ typedef struct tegra_shared_surface {
     atomic_t refcnt;
     struct tegra_surface *video;
     struct tegra_surface *disp;
-    struct host1x_csc_params csc;
+    struct tegra_csc csc;
     uint32_t src_x0, src_y0, src_width, src_height;
     uint32_t dst_x0, dst_y0, dst_width, dst_height;
     XvImage *xv_img;
@@ -251,7 +292,7 @@ typedef struct tegra_decoder {
 } tegra_decoder;
 
 typedef struct tegra_mixer {
-    struct host1x_csc_params csc;
+    struct tegra_csc csc;
     pthread_mutex_t lock;
     atomic_t refcnt;
     VdpColor bg_color;
@@ -386,7 +427,7 @@ int sync_dmabuf_read_end(int dmabuf_fd);
 
 tegra_shared_surface *create_shared_surface(tegra_surface *disp,
                                             tegra_surface *video,
-                                            struct host1x_csc_params *csc,
+                                            tegra_csc *csc,
                                             uint32_t src_x0,
                                             uint32_t src_y0,
                                             uint32_t src_width,
@@ -403,6 +444,9 @@ void shared_surface_kill_disp(tegra_surface *disp);
 tegra_shared_surface * shared_surface_get(tegra_surface *disp);
 
 bool tegra_check_xv_atom(tegra_device *dev, char const *atom_name);
+bool tegra_xv_initialize_csc(tegra_device *dev);
+void tegra_xv_reset_csc(tegra_device *dev);
+bool tegra_xv_apply_csc(tegra_device *dev, tegra_csc *csc);
 
 int rotate_surface_gr2d(tegra_surface *src_surf,
                         tegra_surface *dst_surf,

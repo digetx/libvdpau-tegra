@@ -383,6 +383,8 @@ static void pqt_display_xv(tegra_pqt *pqt, tegra_surface *surf, bool block)
                    surf->shared->dst_y0,
                    surf->shared->dst_width,
                    surf->shared->dst_height);
+
+        tegra_xv_apply_csc(dev, &surf->shared->csc);
     } else if (surf->xv_img) {
         DebugMsg("surface %u RGB overlay\n", surf->surface_id);
 
@@ -462,6 +464,7 @@ static void transit_display_to_dri(tegra_pqt *pqt)
 
     XvStopVideo(dev->display, dev->xv_port, pqt->drawable);
     memset(&pqt->bg_old_state, 0, sizeof(pqt->bg_old_state));
+    tegra_xv_reset_csc(dev);
 
     pqt->disp_state = TEGRA_PQT_DRI;
 }
@@ -519,7 +522,7 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
         ret = host1x_gr2d_surface_blit(&surf->stream_2d,
                                        surf->shared->video->pixbuf,
                                        pqt->dri_pixbuf,
-                                       &surf->shared->csc,
+                                       &surf->shared->csc.gr2d,
                                        surf->shared->src_x0,
                                        surf->shared->src_y0,
                                        surf->shared->src_width,
