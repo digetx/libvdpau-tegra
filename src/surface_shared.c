@@ -32,6 +32,10 @@ static XvImage * create_video_xv(tegra_surface *video)
         return NULL;
     }
 
+    if (!video->dev->xv_ready) {
+        return NULL;
+    }
+
     xv_img = XvCreateImage(video->dev->display, video->dev->xv_port,
                            FOURCC_PASSTHROUGH_YV12, NULL,
                            video->width, video->height);

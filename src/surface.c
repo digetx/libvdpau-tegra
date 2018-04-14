@@ -238,6 +238,11 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
+        if (!dev->xv_ready) {
+            ret = -ENOMEM;
+            goto err_cleanup;
+        }
+
         xv_img = XvCreateImage(dev->display, dev->xv_port,
                                format_id, NULL, width, height);
         if (xv_img == NULL) {

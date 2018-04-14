@@ -607,6 +607,7 @@ xv_detected:
     }
 
     dev->xv_port = adaptor_info[num_adaptors].base_id;
+    dev->xv_ready = true;
 
 err_cleanup:
     if (adaptor_info) {

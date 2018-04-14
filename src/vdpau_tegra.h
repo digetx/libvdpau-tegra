@@ -137,6 +137,7 @@ typedef struct tegra_device {
     atomic_t refcnt;
     bool dri2_inited;
     bool dri2_ready;
+    bool xv_ready;
     int screen;
     int vde_fd;
     int drm_fd;
