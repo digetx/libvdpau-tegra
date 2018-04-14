@@ -83,7 +83,7 @@ static XvImage * create_video_xv(tegra_surface *video)
 
 tegra_shared_surface *create_shared_surface(tegra_surface *disp,
                                             tegra_surface *video,
-                                            struct host1x_csc_params *csc,
+                                            tegra_csc *csc,
                                             uint32_t src_x0,
                                             uint32_t src_y0,
                                             uint32_t src_width,
@@ -310,7 +310,7 @@ int shared_surface_transfer_video(tegra_surface *disp)
     ret = host1x_gr2d_surface_blit(&disp->stream_2d,
                                    video->pixbuf,
                                    disp->pixbuf,
-                                   &shared->csc,
+                                   &shared->csc.gr2d,
                                    shared->src_x0,
                                    shared->src_y0,
                                    shared->src_width,

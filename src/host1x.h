@@ -25,18 +25,6 @@
 #ifndef HOST1X_H
 #define HOST1X_H
 
-#define FLOAT_TO_FIXED_6_12(fp) \
-    (((int32_t) (fp * 4096.0f + 0.5f)) & ((1 << 18) - 1))
-
-#define FLOAT_TO_FIXED_s2_7(fp) \
-    (((fp < 0.0f) << 9) | (((int32_t) (fabs(fp) * 128.0f)) & ((1 << 9) - 1)))
-
-#define FLOAT_TO_FIXED_s1_7(fp) \
-    (((fp < 0.0f) << 8) | (((int32_t) (fabs(fp) * 128.0f)) & ((1 << 8) - 1)))
-
-#define FLOAT_TO_FIXED_0_8(fp) \
-    (((int32_t) (fp * 256.0f + 0.5f)) & ((1 << 8) - 1))
-
 #define HOST1X_OPCODE_SETCL(offset, classid, mask) \
     ((0x0 << 28) | (((offset) & 0xfff) << 16) | (((classid) & 0x3ff) << 6) | ((mask) & 0x3f))
 #define HOST1X_OPCODE_INCR(offset, count) \

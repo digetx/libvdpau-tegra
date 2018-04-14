@@ -21,6 +21,8 @@
 
 pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;
 
+static pthread_mutex_t xv_lock = PTHREAD_MUTEX_INITIALIZER;
+
 bool tegra_vdpau_debug;
 bool tegra_vdpau_force_xv;
 bool tegra_vdpau_force_dri;
@@ -66,6 +68,152 @@ bool tegra_check_xv_atom(tegra_device *dev, char const *atom_name)
     XFree(attributes);
 
     return i < count;
+}
+
+static bool __tegra_xv_apply_csc(tegra_device *dev, tegra_csc *csc)
+{
+    int32_t val, ret;
+
+    if (dev->xv_csc.applied) {
+        if (memcmp(&dev->xv_csc.old.xv, &csc->xv, sizeof(csc->xv)) == 0) {
+            return true;
+        }
+    }
+
+    dev->xv_csc.applied = false;
+
+    ret = XvSetPortAttribute(dev->display, dev->xv_port,
+                             dev->xv_csc.xvCSC_YOF_KYRGB,
+                             csc->xv.yof_kyrgb);
+    if (ret != Success) {
+        ErrorMsg("failed to set XV_TEGRA_YOF_KYRGB %d\n", ret);
+        return false;
+    }
+
+    ret = XvSetPortAttribute(dev->display, dev->xv_port,
+                             dev->xv_csc.xvCSC_KUR_KVR,
+                             csc->xv.kur_kvr);
+    if (ret != Success) {
+        ErrorMsg("failed to set XV_TEGRA_KUR_KVR %d\n", ret);
+        return false;
+    }
+
+    ret = XvSetPortAttribute(dev->display, dev->xv_port,
+                             dev->xv_csc.xvCSC_KUG_KVG,
+                             csc->xv.kug_kvg);
+    if (ret != Success) {
+        ErrorMsg("failed to set XV_TEGRA_KUG_KVG %d\n", ret);
+        return false;
+    }
+
+    ret = XvSetPortAttribute(dev->display, dev->xv_port,
+                             dev->xv_csc.xvCSC_KUB_KVB,
+                             csc->xv.kub_kvb);
+    if (ret != Success) {
+        ErrorMsg("failed to set XV_TEGRA_KUB_KVB %d\n", ret);
+        return false;
+    }
+
+    ret = XvSetPortAttribute(dev->display, dev->xv_port,
+                             dev->xv_csc.xvCSC_update,
+                             1);
+    if (ret != Success) {
+        ErrorMsg("failed to set XV_TEGRA_CSC_UPDATE %d\n", ret);
+        dev->xv_csc.ready = false;
+        return false;
+    }
+
+    ret = XvGetPortAttribute(dev->display, dev->xv_port,
+                             dev->xv_csc.xvCSC_update, &val);
+    if (ret != Success || !val) {
+        ErrorMsg("failed to get XV_TEGRA_CSC_UPDATE %d val %d\n", ret, val);
+        dev->xv_csc.ready = false;
+        return false;
+    }
+
+    dev->xv_csc.old.xv = csc->xv;
+    dev->xv_csc.applied = true;
+
+    return true;
+}
+
+bool tegra_xv_initialize_csc(tegra_device *dev)
+{
+    pthread_mutex_lock(&xv_lock);
+
+    if (!dev->xv_csc.inited && dev->xv_ready) {
+        if (tegra_check_xv_atom(dev, "XV_TEGRA_YOF_KYRGB"))
+            dev->xv_csc.xvCSC_YOF_KYRGB = XInternAtom(dev->display,
+                                                      "XV_TEGRA_YOF_KYRGB",
+                                                      false);
+
+        if (tegra_check_xv_atom(dev, "XV_TEGRA_KUR_KVR"))
+            dev->xv_csc.xvCSC_KUR_KVR = XInternAtom(dev->display,
+                                                    "XV_TEGRA_KUR_KVR",
+                                                    false);
+
+        if (tegra_check_xv_atom(dev, "XV_TEGRA_KUG_KVG"))
+            dev->xv_csc.xvCSC_KUG_KVG = XInternAtom(dev->display,
+                                                    "XV_TEGRA_KUG_KVG",
+                                                    false);
+
+        if (tegra_check_xv_atom(dev, "XV_TEGRA_KUB_KVB"))
+            dev->xv_csc.xvCSC_KUB_KVB = XInternAtom(dev->display,
+                                                    "XV_TEGRA_KUB_KVB",
+                                                    false);
+
+        if (tegra_check_xv_atom(dev, "XV_TEGRA_CSC_UPDATE"))
+            dev->xv_csc.xvCSC_update = XInternAtom(dev->display,
+                                                   "XV_TEGRA_CSC_UPDATE",
+                                                    false);
+        if (dev->xv_csc.xvCSC_YOF_KYRGB != None &&
+            dev->xv_csc.xvCSC_KUR_KVR != None &&
+            dev->xv_csc.xvCSC_KUG_KVG != None &&
+            dev->xv_csc.xvCSC_KUB_KVB != None &&
+            dev->xv_csc.xvCSC_update != None)
+        {
+            tegra_csc default_csc = {
+                .xv = {
+                    .yof_kyrgb = 0x012a00f0,
+                    .kur_kvr   = 0x01980000,
+                    .kug_kvg   = 0x032f039b,
+                    .kub_kvb   = 0x00000204,
+                },
+            };
+
+            dev->xv_csc.ready = __tegra_xv_apply_csc(dev, &default_csc);
+        }
+
+        if (!dev->xv_csc.ready) {
+            ErrorMsg("XV colorspace conversion not available, update Opentegra Xorg driver and/or Linux kernel to get video overlay CSC support\n");
+        }
+
+        dev->xv_csc.inited = true;
+    }
+
+    pthread_mutex_unlock(&xv_lock);
+
+    return dev->xv_csc.ready;
+}
+
+void tegra_xv_reset_csc(tegra_device *dev)
+{
+    pthread_mutex_lock(&xv_lock);
+    dev->xv_csc.applied = false;
+    pthread_mutex_unlock(&xv_lock);
+}
+
+bool tegra_xv_apply_csc(tegra_device *dev, tegra_csc *csc)
+{
+    int ret = false;
+
+    pthread_mutex_lock(&xv_lock);
+    if (dev->xv_csc.ready) {
+        ret = __tegra_xv_apply_csc(dev, csc);
+    }
+    pthread_mutex_unlock(&xv_lock);
+
+    return ret;
 }
 
 VdpTime get_time(void)

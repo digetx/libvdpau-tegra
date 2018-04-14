@@ -44,17 +44,51 @@ check_709:
     return false;
 }
 
+static bool mixer_apply_vdp_csc_to_xv(tegra_mixer *mix,
+                                      VdpCSCMatrix const cscmat)
+{
+    tegra_device *dev = mix->dev;
+    uint32_t val0, val1;
+
+    if (!tegra_xv_initialize_csc(dev))
+        return false;
+
+    val0 = mix->csc.gr2d.yos & 0xff;
+    val1 = FLOAT_TO_FIXED_s2_8( CLAMP(cscmat[0][0], 0.0f, 1.98f) );
+
+    mix->csc.xv.yof_kyrgb = (val1 << 16) | val0;
+
+    val0 = FLOAT_TO_FIXED_s2_8( CLAMP(cscmat[0][1], -3.98f, 3.98f) );
+    val1 = FLOAT_TO_FIXED_s2_8( CLAMP(cscmat[0][2], -3.98f, 3.98f) );
+
+    mix->csc.xv.kur_kvr = (val1 << 16) | val0;
+
+    val0 = FLOAT_TO_FIXED_s1_8( CLAMP(cscmat[1][1], -1.98f, 1.98f) );
+    val1 = FLOAT_TO_FIXED_s1_8( CLAMP(cscmat[1][2], -1.98f, 1.98f) );
+
+    mix->csc.xv.kug_kvg = (val1 << 16) | val0;
+
+    val0 = FLOAT_TO_FIXED_s2_8( CLAMP(cscmat[2][1], -3.98f, 3.98f) );
+    val1 = FLOAT_TO_FIXED_s2_8( CLAMP(cscmat[2][2], -3.98f, 3.98f) );
+
+    mix->csc.xv.kub_kvb = (val1 << 16) | val0;
+
+    return true;
+}
+
 static void mixer_apply_vdp_csc(tegra_mixer *mix, VdpCSCMatrix const cscmat)
 {
-    mix->csc.yos = -16;
-    mix->csc.cvr = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[0][2], -3.98f, 3.98f) );
-    mix->csc.cub = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[2][1], -3.98f, 3.98f) );
-    mix->csc.cyx = FLOAT_TO_FIXED_s1_7( CLAMP(cscmat[0][0], -1.98f, 1.98f) );
-    mix->csc.cur = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[0][1], -3.98f, 3.98f) );
-    mix->csc.cug = FLOAT_TO_FIXED_s1_7( CLAMP(cscmat[1][1], -1.98f, 1.98f) );
-    mix->csc.cvb = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[2][2], -3.98f, 3.98f) );
-    mix->csc.cvg = FLOAT_TO_FIXED_s1_7( CLAMP(cscmat[1][2], -1.98f, 1.98f) );
-    mix->custom_csc = custom_csc(cscmat);
+    mix->csc.gr2d.yos = -16;
+    mix->csc.gr2d.cyx = FLOAT_TO_FIXED_s1_7( CLAMP(cscmat[0][0], -1.98f, 1.98f) );
+    mix->csc.gr2d.cur = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[0][1], -3.98f, 3.98f) );
+    mix->csc.gr2d.cvr = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[0][2], -3.98f, 3.98f) );
+    mix->csc.gr2d.cug = FLOAT_TO_FIXED_s1_7( CLAMP(cscmat[1][1], -1.98f, 1.98f) );
+    mix->csc.gr2d.cvg = FLOAT_TO_FIXED_s1_7( CLAMP(cscmat[1][2], -1.98f, 1.98f) );
+    mix->csc.gr2d.cub = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[2][1], -3.98f, 3.98f) );
+    mix->csc.gr2d.cvb = FLOAT_TO_FIXED_s2_7( CLAMP(cscmat[2][2], -3.98f, 3.98f) );
+
+    mix->custom_csc = (!mixer_apply_vdp_csc_to_xv(mix, cscmat) &&
+                       custom_csc(cscmat));
 }
 
 VdpStatus vdp_video_mixer_query_feature_support(VdpDevice device,
@@ -676,7 +710,7 @@ VdpStatus vdp_video_mixer_render(
         ret = host1x_gr2d_surface_blit(&dest_surf->stream_2d,
                                        video_surf->pixbuf,
                                        dest_surf->pixbuf,
-                                       &mix->csc,
+                                       &mix->csc.gr2d,
                                        src_vid_x0,
                                        src_vid_y0,
                                        src_vid_width,

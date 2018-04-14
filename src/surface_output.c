@@ -497,7 +497,7 @@ static VdpStatus surface_render_bitmap_surface(
             if (shared) {
                 ret = rotate_surface_gr2d(shared->video,
                                           dst_surf,
-                                          &shared->csc,
+                                          &shared->csc.gr2d,
                                           rotate,
                                           0, 0,
                                           shared->src_width,
@@ -669,7 +669,7 @@ out_1:
                 if (shared) {
                     ret = rotate_surface_gr2d(shared->video,
                                               dst_surf,
-                                              &shared->csc,
+                                              &shared->csc.gr2d,
                                               rotate,
                                               0, 0,
                                               shared->src_width,
