@@ -126,6 +126,8 @@ static bool initialize_dri2(tegra_pqt *pqt)
 
         pqt_update_dri_pixbuf(pqt);
 
+        DebugMsg("Success\n");
+
         dev->dri2_ready = true;
     }
 
