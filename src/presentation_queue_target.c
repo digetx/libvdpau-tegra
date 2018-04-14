@@ -50,7 +50,7 @@ void pqt_display_surface_to_idle_state(tegra_pqt *pqt)
     unref_surface(surf);
 }
 
-static void pqt_update_dri_pixbuf(tegra_pqt *pqt)
+static int pqt_update_dri_pixbuf(tegra_pqt *pqt)
 {
     tegra_device *dev = pqt->dev;
     struct drm_tegra_bo *bo;
@@ -69,20 +69,20 @@ static void pqt_update_dri_pixbuf(tegra_pqt *pqt)
                          &attachment, 1, &outCount);
     if (!buf || outCount != 1) {
         ErrorMsg("Failed to get DRI2 buffer\n");
-        return;
+        return -1;
     }
 
     DebugMsg("width %d height %d\n", width, height);
 
     err = drm_tegra_bo_from_name(&bo, dev->drm, buf[0].names[0], 0);
     if (err) {
-        return;
+        return err;
     }
 
     err = drm_tegra_bo_forbid_caching(bo);
     if (err) {
         drm_tegra_bo_unref(bo);
-        return;
+        return err;
     }
 
     pqt->dri_pixbuf = host1x_pixelbuffer_wrap(&bo, width, height,
@@ -91,15 +91,17 @@ static void pqt_update_dri_pixbuf(tegra_pqt *pqt)
                                               PIX_BUF_LAYOUT_LINEAR);
     if (!pqt->dri_pixbuf) {
         drm_tegra_bo_unref(bo);
-        return;
+        return -2;
     }
+
+    return 0;
 }
 
 static bool initialize_dri2(tegra_pqt *pqt)
 {
     tegra_device *dev = pqt->dev;
     char *driverName, *deviceName;
-    Bool ret;
+    int ret;
 
     pthread_mutex_lock(&global_lock);
 
@@ -124,7 +126,21 @@ static bool initialize_dri2(tegra_pqt *pqt)
         DRI2CreateDrawable(dev->display, pqt->drawable);
         DRI2SwapInterval(dev->display, pqt->drawable, 1);
 
-        pqt_update_dri_pixbuf(pqt);
+        ret = pqt_update_dri_pixbuf(pqt);
+        if (ret) {
+            ErrorMsg("DRI2 buffer preparation failed %d\n", ret);
+
+            DRI2DestroyDrawable(dev->display, pqt->drawable);
+
+            if (!tegra_vdpau_force_xv) {
+                ErrorMsg("forcing Xv output\n");
+                tegra_vdpau_force_xv = true;
+            }
+
+            tegra_vdpau_force_dri = false;
+
+            goto unlock;
+        }
 
         DebugMsg("Success\n");
 
