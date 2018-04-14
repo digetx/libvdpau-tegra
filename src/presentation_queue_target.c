@@ -95,6 +95,46 @@ static void pqt_update_dri_pixbuf(tegra_pqt *pqt)
     }
 }
 
+static bool initialize_dri2(tegra_pqt *pqt)
+{
+    tegra_device *dev = pqt->dev;
+    char *driverName, *deviceName;
+    Bool ret;
+
+    pthread_mutex_lock(&global_lock);
+
+    if (!dev->dri2_inited) {
+        dev->dri2_inited = true;
+
+        ret = DRI2Connect(dev->display, pqt->drawable, DRI2DriverVDPAU,
+                          &driverName, &deviceName);
+        if (!ret) {
+            ErrorMsg("DRI2 connect failed\n");
+
+            if (!tegra_vdpau_force_xv) {
+                ErrorMsg("forcing Xv output\n");
+                tegra_vdpau_force_xv = true;
+            }
+
+            tegra_vdpau_force_dri = false;
+
+            goto unlock;
+        }
+
+        DRI2CreateDrawable(dev->display, pqt->drawable);
+        DRI2SwapInterval(dev->display, pqt->drawable, 1);
+
+        pqt_update_dri_pixbuf(pqt);
+
+        dev->dri2_ready = true;
+    }
+
+unlock:
+    pthread_mutex_unlock(&global_lock);
+
+    return dev->dri2_ready;
+}
+
 static void pqt_display_dri(tegra_pqt *pqt, tegra_surface *surf)
 {
     tegra_device *dev = pqt->dev;
@@ -129,7 +169,7 @@ static void pqt_display_xv(tegra_pqt *pqt, tegra_surface *surf)
         pqt->bg_color = surf->bg_color;
     }
 
-    if (surf->shared) {
+    if (surf->shared && surf->shared->xv_img) {
         DebugMsg("surface %u YUV overlay\n", surf->surface_id);
 
         XvPutImage(dev->display, dev->xv_port,
@@ -279,6 +319,14 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
 void pqt_prepare_dri_surface(tegra_pqt *pqt, tegra_surface *surf)
 {
     pthread_mutex_lock(&pqt->lock);
+
+    if ((tegra_vdpau_force_dri || pqt->overlapped_current) &&
+        !initialize_dri2(pqt))
+    {
+        pthread_mutex_unlock(&pqt->lock);
+        return;
+    }
+
     pthread_mutex_lock(&surf->lock);
 
     if (tegra_vdpau_force_dri || pqt->overlapped_current) {
@@ -295,13 +343,20 @@ void pqt_prepare_dri_surface(tegra_pqt *pqt, tegra_surface *surf)
 void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf,
                          bool update_status, bool transit)
 {
+    tegra_device *dev = pqt->dev;
+
     DebugMsg("surface %u earliest_presentation_time %llu+\n",
              surf->surface_id, surf->earliest_presentation_time);
 
     pthread_mutex_lock(&pqt->lock);
-    pthread_mutex_lock(&surf->lock);
 
     if (tegra_vdpau_force_dri || pqt->overlapped_current) {
+        initialize_dri2(pqt);
+    }
+
+    pthread_mutex_lock(&surf->lock);
+
+    if ((tegra_vdpau_force_dri || pqt->overlapped_current) && dev->dri2_ready) {
         pqt_update_dri_buffer(pqt, surf);
         pqt_display_dri(pqt, surf);
 
@@ -444,27 +499,6 @@ static void * pqt_x11_event_thr(void *opaque)
     return NULL;
 }
 
-static bool initialize_dri2(tegra_pqt *pqt)
-{
-    tegra_device *dev = pqt->dev;
-    char *driverName, *deviceName;
-    Bool ret;
-
-    ret = DRI2Connect(dev->display, pqt->drawable, DRI2DriverVDPAU,
-                      &driverName, &deviceName);
-    if (!ret) {
-        ErrorMsg("DRI2 connect failed\n");
-        return false;
-    }
-
-    DRI2CreateDrawable(dev->display, pqt->drawable);
-    DRI2SwapInterval(dev->display, pqt->drawable, 1);
-
-    pqt_update_dri_pixbuf(pqt);
-
-    return true;
-}
-
 void ref_queue_target(tegra_pqt *pqt)
 {
     atomic_inc(&pqt->refcnt);
@@ -571,13 +605,6 @@ VdpStatus vdp_presentation_queue_target_create_x11(
 
     XSetWindowBackground(dev->display, drawable, pqt->bg_color);
     XClearWindow(dev->display, drawable);
-
-    if (!initialize_dri2(pqt)) {
-        put_queue_target(pqt);
-        put_device(dev);
-        free(pqt);
-        return VDP_STATUS_RESOURCES;
-    }
 
     if (_Xglobal_lock && !(tegra_vdpau_force_xv || tegra_vdpau_force_dri)) {
         pthread_attr_init(&thread_attrs);
