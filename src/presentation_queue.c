@@ -389,6 +389,7 @@ retry:
     err = pthread_mutex_trylock(&pq->lock);
     if (err) {
         pthread_mutex_unlock(&surf->lock);
+        sched_yield();
         goto retry;
     }
 
