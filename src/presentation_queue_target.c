@@ -50,6 +50,27 @@ void pqt_display_surface_to_idle_state(tegra_pqt *pqt)
     unref_surface(surf);
 }
 
+static void pqt_create_dri2_drawable(tegra_pqt *pqt)
+{
+    tegra_device *dev = pqt->dev;
+
+    if (!pqt->dri2_drawable_created) {
+        DRI2CreateDrawable(dev->display, pqt->drawable);
+        DRI2SwapInterval(dev->display, pqt->drawable, 1);
+        pqt->dri2_drawable_created = true;
+    }
+}
+
+static void pqt_destroy_dri2_drawable(tegra_pqt *pqt)
+{
+    tegra_device *dev = pqt->dev;
+
+    if (pqt->dri2_drawable_created) {
+        DRI2DestroyDrawable(dev->display, pqt->drawable);
+        pqt->dri2_drawable_created = false;
+    }
+}
+
 static int pqt_update_dri_pixbuf(tegra_pqt *pqt)
 {
     tegra_device *dev = pqt->dev;
@@ -64,6 +85,8 @@ static int pqt_update_dri_pixbuf(tegra_pqt *pqt)
         host1x_pixelbuffer_free(pqt->dri_pixbuf);
         pqt->dri_pixbuf = NULL;
     }
+
+    pqt_create_dri2_drawable(pqt);
 
     buf = DRI2GetBuffers(dev->display, pqt->drawable, &width, &height,
                          &attachment, 1, &outCount);
@@ -123,14 +146,11 @@ static bool initialize_dri2(tegra_pqt *pqt)
             goto unlock;
         }
 
-        DRI2CreateDrawable(dev->display, pqt->drawable);
-        DRI2SwapInterval(dev->display, pqt->drawable, 1);
-
         ret = pqt_update_dri_pixbuf(pqt);
         if (ret) {
             ErrorMsg("DRI2 buffer preparation failed %d\n", ret);
 
-            DRI2DestroyDrawable(dev->display, pqt->drawable);
+            pqt_destroy_dri2_drawable(pqt);
 
             if (!tegra_vdpau_force_xv) {
                 ErrorMsg("forcing Xv output\n");
@@ -228,6 +248,8 @@ static void transit_display_to_xv(tegra_pqt *pqt)
     tegra_device *dev = pqt->dev;
 
     DebugMsg("surface %u\n", surf->surface_id);
+
+    pqt_destroy_dri2_drawable(pqt);
 
     XClearWindow(dev->display, pqt->drawable);
     XSync(dev->display, 0);

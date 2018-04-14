@@ -232,6 +232,7 @@ typedef struct tegra_pqt {
     pthread_mutex_t disp_lock;
     pthread_mutex_t lock;
     uint32_t bg_color;
+    bool dri2_drawable_created;
     bool overlapped_current;
     bool overlapped_new;
     bool win_move;
