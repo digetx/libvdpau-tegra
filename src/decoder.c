@@ -20,8 +20,8 @@
 #include "vdpau_tegra.h"
 
 struct frames_list {
-    struct frames_list   *restrict next;
-    struct tegra_surface *restrict ref_surf;
+    struct frames_list   *next;
+    struct tegra_surface *ref_surf;
 };
 
 static int tegra_level_idc(int level)
@@ -185,7 +185,7 @@ static int get_refs_sorted(struct tegra_vde_h264_frame *dpb_frames,
     struct frames_list *list_head = NULL;
     struct frames_list *prev;
     struct frames_list *itr;
-    tegra_surface *restrict surf;
+    tegra_surface *surf;
     int32_t frame_num;
     int refs_num;
     int i;
