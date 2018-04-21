@@ -279,7 +279,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         pthread_mutex_unlock(&dst_surf->dev->lock);
 
         if (ret == 0) {
-            ErrorMsg("surface clear failed %d\n", ret);
             put_surface(dst_surf);
             put_surface(src_surf);
             return VDP_STATUS_OK;
