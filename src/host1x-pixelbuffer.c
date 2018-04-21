@@ -55,13 +55,13 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
 
     if (width * PIX_BUF_FORMAT_BYTES(format) > pitch) {
         host1x_error("Invalid pitch\n");
-        return NULL;
+        goto error_cleanup;
     }
 
     if (format == PIX_BUF_FMT_YV12) {
         if (width * PIX_BUF_FORMAT_BYTES(format) / 2 > pitch_uv) {
             host1x_error("Invalid UV pitch\n");
-            return NULL;
+            goto error_cleanup;
         }
     }
 
