@@ -161,6 +161,13 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
         surf->data_dirty = true;
     }
 
+    err = map_surface_data(surf);
+    if (err) {
+        pthread_mutex_unlock(&surf->lock);
+        put_surface(surf);
+        return VDP_STATUS_RESOURCES;
+    }
+
     pix       = surf->pix;
     pfmt      = pixman_image_get_format(pix);
     surf_data = pixman_image_get_data(pix);
@@ -185,6 +192,8 @@ VdpStatus vdp_bitmap_surface_put_bits_native(VdpBitmapSurface surface,
     }
 
     host1x_pixelbuffer_check_guard(surf->pixbuf);
+
+    unmap_surface_data(surf);
 
     pthread_mutex_unlock(&surf->lock);
 

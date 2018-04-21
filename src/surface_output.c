@@ -245,24 +245,14 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         return VDP_STATUS_RESOURCES;
     }
 
-    dst_pix  = dst_surf->pix;
-    dst_data = pixman_image_get_data(dst_pix);
-
-    pfmt = pixman_image_get_format(dst_pix);
-
-    ret = pixman_format_supported_destination(pfmt);
-    if (!ret) {
-        ErrorMsg("pixman_format_supported_destination failed\n");
-    }
-
     if (destination_rect != NULL) {
         dst_width = destination_rect->x1 - destination_rect->x0;
         dst_height = destination_rect->y1 - destination_rect->y0;
         dst_x0 = destination_rect->x0;
         dst_y0 = destination_rect->y0;
     } else {
-        dst_width = pixman_image_get_width(dst_pix);
-        dst_height = pixman_image_get_height(dst_pix);
+        dst_width = dst_surf->pixbuf->width;
+        dst_height = dst_surf->pixbuf->height;
         dst_x0 = 0;
         dst_y0 = 0;
     }
@@ -283,6 +273,25 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
             put_surface(src_surf);
             return VDP_STATUS_OK;
         }
+    }
+
+    if (source_surface == VDP_INVALID_HANDLE) {
+        ret = map_surface_data(dst_surf);
+        if (ret) {
+            put_surface(dst_surf);
+            put_surface(src_surf);
+            return VDP_STATUS_RESOURCES;
+        }
+
+        dst_pix  = dst_surf->pix;
+        dst_data = pixman_image_get_data(dst_pix);
+
+        pfmt = pixman_image_get_format(dst_pix);
+
+        ret = pixman_format_supported_destination(pfmt);
+        if (!ret) {
+            ErrorMsg("pixman_format_supported_destination failed\n");
+        }
 
         ret = pixman_fill(dst_data,
                           pixman_image_get_stride(dst_pix) / 4,
@@ -293,6 +302,8 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         if (!ret) {
             ErrorMsg("pixman_fill failed\n");
         }
+
+        unmap_surface_data(dst_surf);
 
         put_surface(dst_surf);
         put_surface(src_surf);
@@ -308,27 +319,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         }
     }
 
-    src_pix = src_surf->pix;
-
-    pfmt = pixman_image_get_format(src_pix);
-
-    ret = pixman_format_supported_destination(pfmt);
-    if (!ret) {
-        ErrorMsg("pixman_format_supported_destination failed\n");
-    }
-
-    if (source_rect != NULL) {
-        src_width = source_rect->x1 - source_rect->x0;
-        src_height = source_rect->y1 - source_rect->y0;
-        src_x0 = source_rect->x0;
-        src_y0 = source_rect->y0;
-    } else {
-        src_width = pixman_image_get_width(src_pix);
-        src_height = pixman_image_get_height(src_pix);
-        src_x0 = 0;
-        src_y0 = 0;
-    }
-
     if (flags & ~3ul) {
         ErrorMsg("invalid flags %X\n", flags);
     }
@@ -341,6 +331,18 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         break;
     default:
         break;
+    }
+
+    if (source_rect != NULL) {
+        src_width = source_rect->x1 - source_rect->x0;
+        src_height = source_rect->y1 - source_rect->y0;
+        src_x0 = source_rect->x0;
+        src_y0 = source_rect->y0;
+    } else {
+        src_width = src_surf->pixbuf->width;
+        src_height = src_surf->pixbuf->height;
+        src_x0 = 0;
+        src_y0 = 0;
     }
 
     if (dst_width != src_width || dst_height != src_height) {
@@ -367,6 +369,36 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         put_surface(dst_surf);
         put_surface(src_surf);
         return VDP_STATUS_OK;
+    }
+
+    ret = map_surface_data(dst_surf);
+    if (ret) {
+        put_surface(dst_surf);
+        put_surface(src_surf);
+        return VDP_STATUS_RESOURCES;
+    }
+
+    ret = map_surface_data(src_surf);
+    if (ret) {
+        unmap_surface_data(dst_surf);
+
+        put_surface(dst_surf);
+        put_surface(src_surf);
+        return VDP_STATUS_RESOURCES;
+    }
+
+    dst_pix = dst_surf->pix;
+    pfmt = pixman_image_get_format(dst_pix);
+    ret = pixman_format_supported_destination(pfmt);
+    if (!ret) {
+        ErrorMsg("pixman_format_supported_destination failed\n");
+    }
+
+    src_pix = src_surf->pix;
+    pfmt = pixman_image_get_format(src_pix);
+    ret = pixman_format_supported_destination(pfmt);
+    if (!ret) {
+        ErrorMsg("pixman_format_supported_destination failed\n");
     }
 
     if (need_scale || need_rotate) {
@@ -424,6 +456,9 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
             ErrorMsg("pixman_image_set_transform failed\n");
         }
     }
+
+    unmap_surface_data(dst_surf);
+    unmap_surface_data(src_surf);
 
     put_surface(dst_surf);
     put_surface(src_surf);

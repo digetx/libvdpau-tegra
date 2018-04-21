@@ -161,6 +161,7 @@ typedef struct tegra_surface {
     struct tegra_vde_h264_frame *frame;
     int32_t pic_order_cnt;
 
+    pixman_format_code_t pfmt;
     pixman_image_t *pix;
     XvImage *xv_img;
     uint32_t flags;
@@ -170,7 +171,10 @@ typedef struct tegra_surface {
     void *cr_data;
 
     struct host1x_pixelbuffer *pixbuf;
-    struct drm_tegra_bo *y_bo;
+    union {
+        struct drm_tegra_bo *y_bo;
+        struct drm_tegra_bo *bo;
+    };
     struct drm_tegra_bo *cb_bo;
     struct drm_tegra_bo *cr_bo;
     struct drm_tegra_bo *aux_bo;
@@ -200,6 +204,8 @@ typedef struct tegra_surface {
     VdpRGBAFormat rgba_format;
     bool data_allocated;
     bool data_dirty;
+
+    unsigned int map_cnt;
 } tegra_surface;
 
 typedef struct tegra_decoder {
@@ -276,6 +282,8 @@ VdpStatus unref_surface(tegra_surface *surf);
 #define put_surface(__surf) ({ if (__surf) unref_surface(__surf); })
 void set_surface(VdpBitmapSurface surface, tegra_surface *surf);
 void replace_surface(tegra_surface *old_surf, tegra_surface *new_surf);
+int map_surface_data(tegra_surface *surf);
+void unmap_surface_data(tegra_surface *surf);
 int dynamic_alloc_surface_data(tegra_surface *surf);
 int dynamic_release_surface_data(tegra_surface *surf);
 int alloc_surface_data(tegra_surface *surf);

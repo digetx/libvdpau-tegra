@@ -160,6 +160,13 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
         return ret;
     }
 
+    ret = map_surface_data(surf);
+    if (ret) {
+        pthread_mutex_unlock(&surf->lock);
+        put_surface(surf);
+        return ret;
+    }
+
     width  = surf->width;
     height = surf->height;
 
@@ -195,6 +202,8 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
     if (!ret) {
         ErrorMsg("pixman_blt failed\n");
     }
+
+    unmap_surface_data(surf);
 
     ret = sync_video_frame_dmabufs(surf, READ_END);
 
@@ -253,6 +262,12 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
         return ret;
     }
 
+    ret = map_surface_data(surf);
+    if (ret) {
+        put_surface(surf);
+        return ret;
+    }
+
     width  = surf->width;
     height = surf->height;
 
@@ -290,6 +305,8 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
     }
 
     host1x_pixelbuffer_check_guard(surf->pixbuf);
+
+    unmap_surface_data(surf);
 
     ret = sync_video_frame_dmabufs(surf, WRITE_END);
 

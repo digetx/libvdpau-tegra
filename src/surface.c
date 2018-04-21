@@ -73,6 +73,143 @@ int dynamic_release_surface_data(tegra_surface *surf)
     return ret;
 }
 
+int map_surface_data(tegra_surface *surf)
+{
+    void *data = NULL;
+    int err;
+
+    pthread_mutex_lock(&surf->lock);
+
+    if (surf->map_cnt++) {
+        goto out_unlock;
+    }
+
+    if (surf->flags & SURFACE_VIDEO) {
+        if (!surf->y_data) {
+            err = drm_tegra_bo_map(surf->y_bo, &surf->y_data);
+
+            if (err < 0) {
+                goto err_cleanup;
+            }
+        }
+
+        if (!surf->cb_data) {
+            err = drm_tegra_bo_map(surf->cb_bo, &surf->cb_data);
+
+            if (err < 0) {
+                goto err_cleanup;
+            }
+
+            surf->cb_data += surf->pixbuf->bo_offset[1];
+        }
+
+        if (!surf->cr_data) {
+            err = drm_tegra_bo_map(surf->cr_bo, &surf->cr_data);
+
+            if (err < 0) {
+                goto err_cleanup;
+            }
+
+            surf->cr_data += surf->pixbuf->bo_offset[2];
+        }
+    } else {
+        if (!surf->pix) {
+            err = drm_tegra_bo_map(surf->bo, &data);
+
+            if (err < 0) {
+                goto err_cleanup;
+            }
+
+            surf->pix = pixman_image_create_bits_no_clear(surf->pfmt,
+                                                          surf->pixbuf->width,
+                                                          surf->pixbuf->height,
+                                                          data,
+                                                          surf->pixbuf->pitch);
+
+            if (surf->pix == NULL) {
+                err = -ENOMEM;
+                goto err_cleanup;
+            }
+        }
+    }
+
+out_unlock:
+    pthread_mutex_unlock(&surf->lock);
+
+    return 0;
+
+err_cleanup:
+    if (surf->flags & SURFACE_VIDEO) {
+        if (surf->y_data) {
+            drm_tegra_bo_unmap(surf->y_bo);
+        }
+
+        if (surf->cb_data) {
+            drm_tegra_bo_unmap(surf->cb_bo);
+        }
+
+        if (surf->cr_data) {
+            drm_tegra_bo_unmap(surf->cr_bo);
+        }
+
+        surf->y_data = NULL;
+        surf->cb_data = NULL;
+        surf->cr_data = NULL;
+    } else {
+        if (data) {
+            drm_tegra_bo_unmap(surf->bo);
+        }
+
+        if (surf->pix) {
+            pixman_image_unref(surf->pix);
+            surf->pix = NULL;
+        }
+    }
+
+    surf->map_cnt = 0;
+
+    pthread_mutex_unlock(&surf->lock);
+
+    ErrorMsg("surface %u mapping failed %d (%s)\n",
+             surf->surface_id, err, strerror(-err));
+
+    return err;
+}
+
+void unmap_surface_data(tegra_surface *surf)
+{
+    pthread_mutex_lock(&surf->lock);
+
+    if (--surf->map_cnt == 0) {
+        if (surf->flags & SURFACE_VIDEO) {
+            if (surf->y_data) {
+                drm_tegra_bo_unmap(surf->y_bo);
+            }
+
+            if (surf->cb_data) {
+                drm_tegra_bo_unmap(surf->cb_bo);
+            }
+
+            if (surf->cr_data) {
+                drm_tegra_bo_unmap(surf->cr_bo);
+            }
+
+            surf->y_data = NULL;
+            surf->cb_data = NULL;
+            surf->cr_data = NULL;
+        } else {
+            if (surf->pix) {
+                drm_tegra_bo_unmap(surf->bo);
+                pixman_image_unref(surf->pix);
+
+                surf->pix = NULL;
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&surf->lock);
+}
+
 int alloc_surface_data(tegra_surface *surf)
 {
     tegra_device *dev                   = surf->dev;
@@ -81,7 +218,6 @@ int alloc_surface_data(tegra_surface *surf)
     VdpRGBAFormat rgba_format           = surf->rgba_format;
     int output                          = surf->flags & SURFACE_OUTPUT;
     int video                           = surf->flags & SURFACE_VIDEO;
-    pixman_image_t *pix                 = NULL;
     XvImage *xv_img                     = NULL;
     struct tegra_vde_h264_frame *frame  = NULL;
     struct host1x_pixelbuffer *pixbuf   = NULL;
@@ -91,19 +227,17 @@ int alloc_surface_data(tegra_surface *surf)
     int ret;
 
     if (!video) {
-        pixman_format_code_t pfmt;
         enum pixel_format pixbuf_fmt;
-        void *data;
 
         switch (rgba_format) {
         case VDP_RGBA_FORMAT_R8G8B8A8:
             pixbuf_fmt = PIX_BUF_FMT_ABGR8888;
-            pfmt = PIXMAN_a8b8g8r8;
+            surf->pfmt = PIXMAN_a8b8g8r8;
             break;
 
         case VDP_RGBA_FORMAT_B8G8R8A8:
             pixbuf_fmt = PIX_BUF_FMT_ARGB8888;
-            pfmt = PIXMAN_a8r8g8b8;
+            surf->pfmt = PIXMAN_a8r8g8b8;
             break;
 
         default:
@@ -120,19 +254,7 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
-        ret = drm_tegra_bo_map(pixbuf->bo, &data);
-
-        if (ret < 0) {
-            goto err_cleanup;
-        }
-
-        pix = pixman_image_create_bits_no_clear(pfmt, width, height,
-                                                data, stride);
-
-        if (pix == NULL) {
-            ret = -ENOMEM;
-            goto err_cleanup;
-        }
+        surf->bo = pixbuf->bo;
     }
 
     if (video) {
@@ -166,12 +288,6 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
-        ret = drm_tegra_bo_map(surf->y_bo, &surf->y_data);
-
-        if (ret < 0) {
-            goto err_cleanup;
-        }
-
         /* blue plane */
 
         ret = drm_tegra_bo_to_dmabuf(surf->cb_bo, (uint32_t *) &frame->cb_fd);
@@ -180,13 +296,6 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
-        ret = drm_tegra_bo_map(surf->cb_bo, &surf->cb_data);
-
-        if (ret < 0) {
-            goto err_cleanup;
-        }
-
-        surf->cb_data += pixbuf->bo_offset[1];
         frame->cb_offset = pixbuf->bo_offset[1];
 
         /* red plane */
@@ -197,13 +306,6 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
-        ret = drm_tegra_bo_map(surf->cr_bo, &surf->cr_data);
-
-        if (ret < 0) {
-            goto err_cleanup;
-        }
-
-        surf->cr_data += pixbuf->bo_offset[2];
         frame->cr_offset = pixbuf->bo_offset[2];
 
         /* aux stuff */
@@ -273,7 +375,6 @@ int alloc_surface_data(tegra_surface *surf)
         pitches[0] = pixbuf->pitch;
     }
 
-    surf->pix = pix;
     surf->xv_img = xv_img;
     surf->pixbuf = pixbuf;
     surf->data_allocated = true;
@@ -284,10 +385,6 @@ err_cleanup:
     if (xv_img != NULL) {
         free(xv_img->data);
         XFree(xv_img);
-    }
-
-    if (pix != NULL) {
-        pixman_image_unref(pix);
     }
 
     if (pixbuf!= NULL) {
