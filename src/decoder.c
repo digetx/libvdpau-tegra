@@ -658,7 +658,6 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
         return ret;
     }
 
-    surf->flags |= SURFACE_YUV_UNCONVERTED;
     surf->flags |= SURFACE_DATA_NEEDS_SYNC;
 
     put_surface(surf);

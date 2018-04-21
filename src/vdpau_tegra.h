@@ -84,9 +84,8 @@
 #define MAX_PRESENTATION_QUEUES_NB          128
 
 #define SURFACE_VIDEO               (1 << 0)
-#define SURFACE_YUV_UNCONVERTED     (1 << 1)
-#define SURFACE_DATA_NEEDS_SYNC     (1 << 2)
-#define SURFACE_OUTPUT              (1 << 3)
+#define SURFACE_DATA_NEEDS_SYNC     (1 << 1)
+#define SURFACE_OUTPUT              (1 << 2)
 
 #define PASSTHROUGH_DATA_SIZE   36
 

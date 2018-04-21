@@ -316,7 +316,6 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
     }
 
     surf->flags &= ~SURFACE_DATA_NEEDS_SYNC;
-    surf->flags |= SURFACE_YUV_UNCONVERTED;
 
     put_surface(surf);
 
