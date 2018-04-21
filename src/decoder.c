@@ -390,6 +390,12 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    if ((info->weighted_pred_flag && (slice_type_mod == 0 || slice_type_mod == 3)) ||
+        (info->weighted_bipred_idc == 1 && slice_type_mod == 1)) {
+        ErrorMsg("Explicit weighted prediction unimplemented\n");
+        return VDP_STATUS_NO_IMPLEMENTATION;
+    }
+
     if (info->entropy_coding_mode_flag) {
         ErrorMsg("CABAC decoding unimplemented\n");
         return VDP_STATUS_NO_IMPLEMENTATION;
