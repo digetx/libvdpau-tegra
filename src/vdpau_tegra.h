@@ -224,6 +224,12 @@ typedef struct tegra_mixer {
     bool custom_csc;
 } tegra_mixer;
 
+enum tegra_pqt_display {
+    TEGRA_PQT_NONE,
+    TEGRA_PQT_XV,
+    TEGRA_PQT_DRI,
+};
+
 typedef struct tegra_pqt {
     tegra_device *dev;
     tegra_surface *disp_surf;
@@ -243,6 +249,7 @@ typedef struct tegra_pqt {
     bool win_move;
     bool exit;
     tegra_surface *dri_prep_surf;
+    enum tegra_pqt_display disp_state;
 } tegra_pqt;
 
 typedef struct tegra_pq {

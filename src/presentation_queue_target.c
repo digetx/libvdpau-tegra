@@ -253,6 +253,8 @@ static void transit_display_to_xv(tegra_pqt *pqt)
 
     XClearWindow(dev->display, pqt->drawable);
     XSync(dev->display, 0);
+
+    pqt->disp_state = TEGRA_PQT_XV;
 }
 
 static void transit_display_to_dri(tegra_pqt *pqt)
@@ -263,6 +265,8 @@ static void transit_display_to_dri(tegra_pqt *pqt)
     DebugMsg("surface %u\n", surf->surface_id);
 
     XvStopVideo(dev->display, dev->xv_port, pqt->drawable);
+
+    pqt->disp_state = TEGRA_PQT_DRI;
 }
 
 static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
@@ -396,17 +400,20 @@ void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf,
 
     pthread_mutex_lock(&surf->lock);
 
-    if ((tegra_vdpau_force_dri || pqt->overlapped_current) && dev->dri2_ready) {
+    if ((tegra_vdpau_force_dri ||
+            (pqt->overlapped_current && !tegra_vdpau_force_xv)) &&
+        dev->dri2_ready)
+    {
         pqt_update_dri_buffer(pqt, surf);
         pqt_display_dri(pqt, surf);
 
-        if (transit) {
+        if (transit || pqt->disp_state != TEGRA_PQT_DRI) {
             transit_display_to_dri(pqt);
         }
     } else {
         pqt_display_xv(pqt, surf);
 
-        if (transit) {
+        if (transit || pqt->disp_state != TEGRA_PQT_XV) {
             transit_display_to_xv(pqt);
         }
     }
@@ -490,6 +497,9 @@ static void * pqt_x11_event_thr(void *opaque)
         if (select(fd + 1, &in_fds, NULL, NULL, &tv) <= 0) {
             continue;
         }
+
+        if (tegra_vdpau_force_xv || tegra_vdpau_force_dri)
+            break;
 
         if (XCheckWindowEvent(dev->display, pqt->drawable,
                               VisibilityChangeMask, &event)) {
