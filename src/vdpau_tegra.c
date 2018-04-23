@@ -631,6 +631,7 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     struct tegra_stream *stream = NULL;
     VdpDevice i;
     drm_magic_t magic;
+    bool dri_failed;
     char *debug_str;
     int vde_fd = -1;
     int drm_fd = -1;
@@ -664,7 +665,17 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
 
     if (!DRI2Authenticate(display, DefaultRootWindow(display), magic)) {
         ErrorMsg("DRI2Authenticate failed\n");
-        goto err_cleanup;
+
+        tegra_vdpau_force_dri = false;
+
+        if (!tegra_vdpau_force_xv) {
+            ErrorMsg("forcing Xv output\n");
+            tegra_vdpau_force_xv = true;
+        }
+
+        dri_failed = true;
+    } else {
+        dri_failed = false;
     }
 
     ret = drm_tegra_new(&drm, drm_fd);
@@ -709,8 +720,16 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     atomic_set(&tegra_devices[i]->refcnt, 1);
 
     if (initialize_xv(display, tegra_devices[i]) != Success) {
-        ErrorMsg("forcing DRI\n");
-        tegra_vdpau_force_dri = true;
+        if (dri_failed) {
+            free(tegra_devices[i]);
+            tegra_devices[i] = NULL;
+            goto err_cleanup;
+        }
+
+        if (!tegra_vdpau_force_dri) {
+            ErrorMsg("forcing DRI\n");
+            tegra_vdpau_force_dri = true;
+        }
     }
 
     tegra_devices[i]->display = display;
