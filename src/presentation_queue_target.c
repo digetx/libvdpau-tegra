@@ -561,7 +561,7 @@ VdpStatus unref_queue_target(tegra_pqt *pqt)
     if (!atomic_dec_and_test(&pqt->refcnt))
         return VDP_STATUS_OK;
 
-    if (_Xglobal_lock && !(tegra_vdpau_force_xv || tegra_vdpau_force_dri)) {
+    if (pqt->threads_running) {
         pthread_join(pqt->x11_thread, NULL);
 
         pthread_mutex_lock(&pqt->disp_lock);
@@ -570,6 +570,12 @@ VdpStatus unref_queue_target(tegra_pqt *pqt)
 
         pthread_join(pqt->disp_thread, NULL);
     }
+
+    if (pqt->disp_state == TEGRA_PQT_XV)
+        XvStopVideo(dev->display, dev->xv_port, pqt->drawable);
+
+    if (pqt->disp_state == TEGRA_PQT_DRI)
+        pqt_destroy_dri2_drawable(pqt);
 
     if (pqt->gc != None) {
         XFreeGC(dev->display, pqt->gc);
@@ -669,6 +675,8 @@ VdpStatus vdp_presentation_queue_target_create_x11(
         pthread_attr_setdetachstate(&thread_attrs, PTHREAD_CREATE_JOINABLE);
         pthread_create(&pqt->disp_thread, &thread_attrs,
                        pqt_display_thr, pqt);
+
+        pqt->threads_running = true;
     }
 
     *target = i;
