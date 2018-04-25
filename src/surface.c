@@ -293,7 +293,9 @@ int alloc_surface_data(tegra_surface *surf)
 
         ret = drm_tegra_bo_to_dmabuf(surf->y_bo, (uint32_t *) &frame->y_fd);
 
-        if (ret < 0) {
+        if (ret) {
+            ErrorMsg("drm_tegra_bo_to_dmabuf failed %d (%s)\n",
+                     ret, strerror(-ret));
             goto err_cleanup;
         }
 
@@ -301,7 +303,9 @@ int alloc_surface_data(tegra_surface *surf)
 
         ret = drm_tegra_bo_to_dmabuf(surf->cb_bo, (uint32_t *) &frame->cb_fd);
 
-        if (ret < 0) {
+        if (ret) {
+            ErrorMsg("drm_tegra_bo_to_dmabuf failed %d (%s)\n",
+                     ret, strerror(-ret));
             goto err_cleanup;
         }
 
@@ -311,7 +315,9 @@ int alloc_surface_data(tegra_surface *surf)
 
         ret = drm_tegra_bo_to_dmabuf(surf->cr_bo, (uint32_t *) &frame->cr_fd);
 
-        if (ret < 0) {
+        if (ret) {
+            ErrorMsg("drm_tegra_bo_to_dmabuf failed %d (%s)\n",
+                     ret, strerror(-ret));
             goto err_cleanup;
         }
 
@@ -321,13 +327,17 @@ int alloc_surface_data(tegra_surface *surf)
 
         ret = drm_tegra_bo_new(&surf->aux_bo, dev->drm, 0,
                                ALIGN(width, 16) * ALIGN(height, 16) / 4);
-        if (ret < 0) {
+        if (ret) {
+            ErrorMsg("drm_tegra_bo_new failed %d (%s)\n",
+                     ret, strerror(-ret));
             goto err_cleanup;
         }
 
         ret = drm_tegra_bo_to_dmabuf(surf->aux_bo, (uint32_t *) &frame->aux_fd);
 
-        if (ret < 0) {
+        if (ret) {
+            ErrorMsg("drm_tegra_bo_to_dmabuf failed %d (%s)\n",
+                     ret, strerror(-ret));
             goto err_cleanup;
         }
     }
@@ -374,8 +384,9 @@ int alloc_surface_data(tegra_surface *surf)
         bo_flinks = (uint32_t *) xv_img->data;
 
         ret = drm_tegra_bo_get_name(pixbuf->bo, &bo_flinks[0]);
-        if (ret != 0) {
-            ErrorMsg("drm_tegra_bo_get_name failed\n");
+        if (ret) {
+            ErrorMsg("drm_tegra_bo_get_name failed %d (%s)\n",
+                     ret, strerror(-ret));
             goto err_cleanup;
         }
 
@@ -520,7 +531,7 @@ err_cleanup:
     free(frame);
     free(surf);
 
-    ErrorMsg("failed to allocate surface %d %s\n", ret, strerror(ret));
+    ErrorMsg("failed to allocate surface %d %s\n", ret, strerror(-ret));
 
     return NULL;
 }
