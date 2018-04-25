@@ -247,7 +247,8 @@ static void transit_display_to_xv(tegra_pqt *pqt)
     tegra_surface *surf = pqt->disp_surf;
     tegra_device *dev = pqt->dev;
 
-    DebugMsg("surface %u\n", surf->surface_id);
+    if (surf)
+        DebugMsg("surface %u\n", surf->surface_id);
 
     pqt_destroy_dri2_drawable(pqt);
 
@@ -262,7 +263,8 @@ static void transit_display_to_dri(tegra_pqt *pqt)
     tegra_surface *surf = pqt->disp_surf;
     tegra_device *dev = pqt->dev;
 
-    DebugMsg("surface %u\n", surf->surface_id);
+    if (surf)
+        DebugMsg("surface %u\n", surf->surface_id);
 
     XvStopVideo(dev->display, dev->xv_port, pqt->drawable);
 

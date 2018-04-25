@@ -45,6 +45,10 @@ int dynamic_alloc_surface_data(tegra_surface *surf)
         DebugMsg("surface %u %p\n", surf->surface_id, surf);
 
         ret = alloc_surface_data(surf);
+        if (ret)
+            ErrorMsg("surface %u %p failed width %u height %u %d (%s)\n",
+                     surf->surface_id, surf, surf->width, surf->height,
+                     ret, strerror(-ret));
     } else {
         DebugMsg("surface %u %p.. already allocated\n",
                  surf->surface_id, surf);
@@ -85,6 +89,11 @@ int map_surface_data(tegra_surface *surf)
     }
 
     if (surf->flags & SURFACE_VIDEO) {
+        if (!surf->pixbuf) {
+            err = -EINVAL;
+            goto err_cleanup;
+        }
+
         if (!surf->y_data) {
             err = drm_tegra_bo_map(surf->y_bo, &surf->y_data);
 

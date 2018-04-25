@@ -251,8 +251,8 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         dst_x0 = destination_rect->x0;
         dst_y0 = destination_rect->y0;
     } else {
-        dst_width = dst_surf->pixbuf->width;
-        dst_height = dst_surf->pixbuf->height;
+        dst_width = dst_surf->width;
+        dst_height = dst_surf->height;
         dst_x0 = 0;
         dst_y0 = 0;
     }
@@ -339,8 +339,8 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         src_x0 = source_rect->x0;
         src_y0 = source_rect->y0;
     } else {
-        src_width = src_surf->pixbuf->width;
-        src_height = src_surf->pixbuf->height;
+        src_width = src_surf->width;
+        src_height = src_surf->height;
         src_x0 = 0;
         src_y0 = 0;
     }
