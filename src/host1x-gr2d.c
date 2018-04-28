@@ -492,29 +492,15 @@ coords_check:
 
     if (inv_scale_x == 1.0f)
         hftype = 7;
-    else if (inv_scale_x < 1.0f)
-        hftype = 0;
-    else if (inv_scale_x < 1.3f)
-        hftype = 1;
-    else if (inv_scale_x < 2.0f)
-        hftype = 3;
     else
-        hftype = 6;
+        hftype = 0;
 
     if (inv_scale_y == 1.0f) {
         vftype = 0;
         vfen = 0;
     } else {
+        vftype = 0;
         vfen = 1;
-
-        if (inv_scale_y < 1.0f)
-            vftype = 0;
-        else if (inv_scale_y < 1.3f)
-            vftype = 1;
-        else if (inv_scale_y < 2.0f)
-            vftype = 2;
-        else
-            vftype = 3;
     }
 
     err = tegra_stream_begin(stream);
