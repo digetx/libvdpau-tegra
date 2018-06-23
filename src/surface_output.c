@@ -212,16 +212,17 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 {
     tegra_surface *dst_surf = get_surface(destination_surface);
     tegra_surface *src_surf = get_surface(source_surface);
+    pixman_image_t *src_pix_region = NULL;
     pixman_image_t *src_pix;
     pixman_image_t *dst_pix;
     pixman_format_code_t pfmt;
     pixman_transform_t transform;
     void *dst_data;
+    uint32_t *offset;
     uint32_t src_width, src_height;
-    uint32_t src_x0, src_y0;
+    int16_t src_x0, src_y0;
     uint32_t dst_width, dst_height;
-    uint32_t dst_x0, dst_y0;
-    uint32_t tmp;
+    int16_t dst_x0, dst_y0;
     int need_scale = 0;
     int need_rotate = 0;
     int ret;
@@ -346,19 +347,21 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         src_y0 = 0;
     }
 
+    DebugMsg("src_width %u src_height %u src_x0 %u src_y0 %u dst_width %u dst_height %u dst_x0 %u dst_y0 %u\n",
+             src_width, src_height, src_x0, src_y0, dst_width, dst_height, dst_x0, dst_y0);
+
     switch (flags & 3) {
     case VDP_OUTPUT_SURFACE_RENDER_ROTATE_90:
     case VDP_OUTPUT_SURFACE_RENDER_ROTATE_270:
-        tmp = src_width;
-        src_width = src_height;
-        src_height = tmp;
+        if (dst_width != src_height || dst_height != src_width) {
+            need_scale = 1;
+        }
         break;
     default:
+        if (dst_width != src_width || dst_height != src_height) {
+            need_scale = 1;
+        }
         break;
-    }
-
-    if (dst_width != src_width || dst_height != src_height) {
-        need_scale = 1;
     }
 
     if (!need_rotate) {
@@ -416,6 +419,25 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     if (need_scale || need_rotate) {
         DebugMsg("need_scale %d need_rotate %d\n", need_scale, need_rotate);
 
+        offset = pixman_image_get_data(src_pix);
+        offset += src_x0;
+        offset += src_surf->pixbuf->pitch / 4 * src_y0;
+
+        src_pix_region = pixman_image_create_bits_no_clear(
+            pfmt, src_width, src_height, offset, src_surf->pixbuf->pitch);
+
+        if (!src_pix_region) {
+            unmap_surface_data(dst_surf);
+            unmap_surface_data(src_surf);
+
+            put_surface(dst_surf);
+            put_surface(src_surf);
+            return VDP_STATUS_RESOURCES;
+        }
+
+        src_pix = src_pix_region;
+
+        pixman_image_set_repeat(src_pix, PIXMAN_REPEAT_NORMAL);
         pixman_transform_init_identity(&transform);
 
         switch (flags & 3) {
@@ -453,6 +475,9 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         if (!ret) {
             ErrorMsg("pixman_image_set_transform failed\n");
         }
+
+        src_x0 = 0;
+        src_y0 = 0;
     }
 
     pixman_image_composite(PIXMAN_OP_SRC,
@@ -469,6 +494,10 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         if (!ret) {
             ErrorMsg("pixman_image_set_transform failed\n");
         }
+    }
+
+    if (src_pix_region) {
+        pixman_image_unref(src_pix_region);
     }
 
     unmap_surface_data(dst_surf);

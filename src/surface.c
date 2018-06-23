@@ -139,8 +139,6 @@ int map_surface_data(tegra_surface *surf)
                 err = -ENOMEM;
                 goto err_cleanup;
             }
-
-            pixman_image_set_repeat(surf->pix, PIXMAN_REPEAT_NORMAL);
         }
     }
 
