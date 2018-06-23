@@ -221,6 +221,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     uint32_t src_x0, src_y0;
     uint32_t dst_width, dst_height;
     uint32_t dst_x0, dst_y0;
+    uint32_t tmp;
     int need_scale = 0;
     int need_rotate = 0;
     int ret;
@@ -345,6 +346,17 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         src_y0 = 0;
     }
 
+    switch (flags & 3) {
+    case VDP_OUTPUT_SURFACE_RENDER_ROTATE_90:
+    case VDP_OUTPUT_SURFACE_RENDER_ROTATE_270:
+        tmp = src_width;
+        src_width = src_height;
+        src_height = tmp;
+        break;
+    default:
+        break;
+    }
+
     if (dst_width != src_width || dst_height != src_height) {
         need_scale = 1;
     }
@@ -402,17 +414,19 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     }
 
     if (need_scale || need_rotate) {
+        DebugMsg("need_scale %d need_rotate %d\n", need_scale, need_rotate);
+
         pixman_transform_init_identity(&transform);
 
         switch (flags & 3) {
         case VDP_OUTPUT_SURFACE_RENDER_ROTATE_90:
-            ret = pixman_transform_rotate(&transform, NULL, 0.0, 1.0);
+            ret = pixman_transform_rotate(&transform, NULL, 0, -pixman_fixed_1);
             break;
         case VDP_OUTPUT_SURFACE_RENDER_ROTATE_180:
-            ret = pixman_transform_rotate(&transform, NULL, -1.0, 0.0);
+            ret = pixman_transform_rotate(&transform, NULL, pixman_fixed_1, 0);
             break;
         case VDP_OUTPUT_SURFACE_RENDER_ROTATE_270:
-            ret = pixman_transform_rotate(&transform, NULL, 0.0, -1.0);
+            ret = pixman_transform_rotate(&transform, NULL, 0, pixman_fixed_1);
             break;
         default:
             ret = 1;
