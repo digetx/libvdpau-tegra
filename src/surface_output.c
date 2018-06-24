@@ -227,17 +227,21 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     int need_rotate = 0;
     int ret;
 
-    if (dst_surf == NULL || src_surf == NULL) {
+    if (dst_surf == NULL ||
+            (src_surf == NULL && source_surface != VDP_INVALID_HANDLE))
+    {
         put_surface(dst_surf);
         put_surface(src_surf);
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    ret = shared_surface_transfer_video(src_surf);
-    if (ret) {
-        put_surface(dst_surf);
-        put_surface(src_surf);
-        return VDP_STATUS_RESOURCES;
+    if (src_surf) {
+        ret = shared_surface_transfer_video(src_surf);
+        if (ret) {
+            put_surface(dst_surf);
+            put_surface(src_surf);
+            return VDP_STATUS_RESOURCES;
+        }
     }
 
     ret = shared_surface_transfer_video(dst_surf);
