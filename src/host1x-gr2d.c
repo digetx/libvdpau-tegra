@@ -23,6 +23,8 @@
 
 #include "vdpau_tegra.h"
 
+static pthread_mutex_t stream_lock = PTHREAD_MUTEX_INITIALIZER;
+
 struct host1x_csc_params csc_rgb_default = {
     .cvr = 0x80, .cub = 0x80, .cyx = 0x80,
 };
@@ -66,9 +68,11 @@ int host1x_gr2d_clear_rect(struct tegra_stream *stream,
         return -EINVAL;
     }
 
+    pthread_mutex_lock(&stream_lock);
+
     err = tegra_stream_begin(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     tegra_stream_push_setclass(stream, HOST1X_CLASS_GR2D);
     tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x09, 9));
@@ -93,16 +97,19 @@ int host1x_gr2d_clear_rect(struct tegra_stream *stream,
     tegra_stream_push(stream, y << 16 | x);
 
     err = tegra_stream_end(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     err = tegra_stream_flush(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     host1x_pixelbuffer_check_guard(pixbuf);
 
-    return 0;
+out_unlock:
+    pthread_mutex_unlock(&stream_lock);
+
+    return err;
 }
 
 int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
@@ -161,9 +168,11 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
         return -EINVAL;
     }
 
+    pthread_mutex_lock(&stream_lock);
+
     err = tegra_stream_begin(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     tegra_stream_push_setclass(stream, HOST1X_CLASS_GR2D);
     tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x09, 9));
@@ -191,16 +200,19 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
     tegra_stream_push(stream, y << 16 | x);
 
     err = tegra_stream_end(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     err = tegra_stream_flush(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     host1x_pixelbuffer_check_guard(pixbuf);
 
-    return 0;
+out_unlock:
+    pthread_mutex_unlock(&stream_lock);
+
+    return err;
 }
 
 int host1x_gr2d_blit(struct tegra_stream *stream,
@@ -296,9 +308,11 @@ yflip_setup:
     if (yflip && !ydir)
         dy += height - 1;
 
+    pthread_mutex_lock(&stream_lock);
+
     err = tegra_stream_begin(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     tegra_stream_push_setclass(stream, HOST1X_CLASS_GR2D);
 
@@ -335,16 +349,19 @@ yflip_setup:
     tegra_stream_push(stream, dy << 16 | dx); /* dstps */
 
     err = tegra_stream_end(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     err = tegra_stream_flush(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     host1x_pixelbuffer_check_guard(dst);
 
-    return 0;
+out_unlock:
+    pthread_mutex_unlock(&stream_lock);
+
+    return err;
 }
 
 static uint32_t sb_offset(struct host1x_pixelbuffer *pixbuf,
@@ -503,9 +520,11 @@ coords_check:
         vfen = 1;
     }
 
+    pthread_mutex_lock(&stream_lock);
+
     err = tegra_stream_begin(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     tegra_stream_push_setclass(stream, HOST1X_CLASS_GR2D_SB);
 
@@ -575,14 +594,17 @@ coords_check:
     tegra_stream_push(stream, (dst_height - 1) << 16 | dst_width); /* dstsize */
 
     err = tegra_stream_end(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     err = tegra_stream_flush(stream);
-    if (err < 0)
-        return err;
+    if (err)
+        goto out_unlock;
 
     host1x_pixelbuffer_check_guard(dst);
 
-    return 0;
+out_unlock:
+    pthread_mutex_unlock(&stream_lock);
+
+    return err;
 }
