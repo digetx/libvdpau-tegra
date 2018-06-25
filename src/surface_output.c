@@ -312,7 +312,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                     DebugMsg("HW offloaded rotation\n");
 
                     tmp_surf = alloc_surface(src_surf->dev,
-                                             src_width, src_height,
+                                             rot_width, rot_height,
                                              src_surf->rgba_format, 0, 0);
                     if (tmp_surf) {
                         ret = host1x_gr2d_surface_blit(shared->video->dev->stream,
