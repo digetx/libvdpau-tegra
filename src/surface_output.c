@@ -318,7 +318,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                         ret = host1x_gr2d_surface_blit(shared->video->dev->stream,
                                                        shared->video->pixbuf,
                                                        tmp_surf->pixbuf,
-                                                       &shared->csc.gr2d,
+                                                       &shared->csc,
                                                        shared->src_x0,
                                                        shared->src_y0,
                                                        shared->src_width,
