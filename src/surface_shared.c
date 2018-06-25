@@ -358,7 +358,7 @@ void shared_surface_kill_disp(tegra_surface *disp)
     }
 }
 
-tegra_shared_surface * shared_surface_get_video(tegra_surface *disp)
+tegra_shared_surface * shared_surface_get(tegra_surface *disp)
 {
     tegra_shared_surface *shared = NULL;
 

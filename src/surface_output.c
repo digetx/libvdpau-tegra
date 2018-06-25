@@ -301,7 +301,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
     if (src_surf) {
         if (need_rotate) {
-            shared = shared_surface_get_video(src_surf);
+            shared = shared_surface_get(src_surf);
 
             if (shared) {
                 if (src_x0 == shared->dst_x0 &&

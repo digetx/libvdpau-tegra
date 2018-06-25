@@ -361,7 +361,7 @@ void unref_shared_surface(tegra_shared_surface *shared);
 tegra_surface * shared_surface_swap_video(tegra_surface *old);
 int shared_surface_transfer_video(tegra_surface *disp);
 void shared_surface_kill_disp(tegra_surface *disp);
-tegra_shared_surface * shared_surface_get_video(tegra_surface *disp);
+tegra_shared_surface * shared_surface_get(tegra_surface *disp);
 
 VdpTime get_time(void);
 
