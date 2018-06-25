@@ -309,7 +309,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                     src_width == shared->dst_width &&
                     src_height == shared->dst_height)
                 {
-                    DebugMsg("HW offloaded rotation\n");
+                    DebugMsg("HW-offloaded video rotation\n");
 
                     tmp_surf = alloc_surface(src_surf->dev,
                                              rot_width, rot_height,
@@ -343,6 +343,35 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                 }
 
                 unref_shared_surface(shared);
+            } else {
+                DebugMsg("HW-offloaded surface rotation\n");
+
+                tmp_surf = alloc_surface(src_surf->dev, rot_width, rot_height,
+                                         src_surf->rgba_format, 0, 0);
+                if (tmp_surf) {
+                    ret = host1x_gr2d_surface_blit(src_surf->dev->stream,
+                                                   src_surf->pixbuf,
+                                                   tmp_surf->pixbuf,
+                                                   &csc_rgb_default,
+                                                   src_x0,
+                                                   src_y0,
+                                                   src_width,
+                                                   src_height,
+                                                   0,
+                                                   0,
+                                                   rot_width,
+                                                   rot_height);
+                    if (ret) {
+                        ErrorMsg("tmo surface blitting failed %d\n", ret);
+                        unref_surface(tmp_surf);
+                        tmp_surf = NULL;
+                    } else {
+                        src_x0 = 0;
+                        src_y0 = 0;
+                    }
+                } else {
+                    ErrorMsg("Failed to allocate tmp surface\n");
+                }
             }
         }
 
