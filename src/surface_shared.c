@@ -201,6 +201,8 @@ tegra_surface * shared_surface_swap_video(tegra_surface *old)
     tegra_shared_surface *shared;
     tegra_surface *new;
 
+    DebugMsg("surface %u\n", old->surface_id);
+
     assert(old->flags & SURFACE_VIDEO);
 
     pthread_mutex_lock(&shared_lock);
@@ -240,6 +242,8 @@ int shared_surface_transfer_video(tegra_surface *disp)
     tegra_shared_surface *shared;
     tegra_surface *video;
     int ret;
+
+    DebugMsg("surface %u\n", disp->surface_id);
 
     pthread_mutex_lock(&disp->lock);
 
@@ -327,6 +331,8 @@ unshare:
 void shared_surface_kill_disp(tegra_surface *disp)
 {
     tegra_shared_surface *shared = NULL;
+
+    DebugMsg("surface %u\n", disp->surface_id);
 
     assert(disp->flags & SURFACE_OUTPUT);
     disp->data_dirty = false;
