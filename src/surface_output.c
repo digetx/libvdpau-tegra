@@ -212,6 +212,9 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 {
     tegra_surface *dst_surf = get_surface(destination_surface);
     tegra_surface *src_surf = get_surface(source_surface);
+    tegra_surface *tmp_surf = NULL;
+    tegra_shared_surface *shared;
+    enum host1x_2d_rotate rotate;
     pixman_image_t *src_pix_region = NULL;
     pixman_image_t *src_pix;
     pixman_image_t *dst_pix;
@@ -223,6 +226,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     int16_t src_x0, src_y0;
     uint32_t dst_width, dst_height;
     int16_t dst_x0, dst_y0;
+    uint32_t rot_width, rot_height;
     int need_scale = 0;
     int need_rotate = 0;
     int ret;
@@ -235,20 +239,16 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    if (src_surf) {
-        ret = shared_surface_transfer_video(src_surf);
-        if (ret) {
-            put_surface(dst_surf);
-            put_surface(src_surf);
-            return VDP_STATUS_RESOURCES;
-        }
-    }
-
-    ret = shared_surface_transfer_video(dst_surf);
-    if (ret) {
-        put_surface(dst_surf);
-        put_surface(src_surf);
-        return VDP_STATUS_RESOURCES;
+    if (source_rect != NULL) {
+        src_width = source_rect->x1 - source_rect->x0;
+        src_height = source_rect->y1 - source_rect->y0;
+        src_x0 = source_rect->x0;
+        src_y0 = source_rect->y0;
+    } else {
+        src_width = src_surf ? src_surf->width : 0;
+        src_height = src_surf ? src_surf->height : 0;
+        src_x0 = 0;
+        src_y0 = 0;
     }
 
     if (destination_rect != NULL) {
@@ -261,6 +261,98 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         dst_height = dst_surf->height;
         dst_x0 = 0;
         dst_y0 = 0;
+    }
+
+    if (flags & ~3ul) {
+        ErrorMsg("invalid flags %X\n", flags);
+    }
+
+    switch (flags & 3) {
+    case VDP_OUTPUT_SURFACE_RENDER_ROTATE_90:
+        rotate = ROT_270;
+        rot_width = dst_height;
+        rot_height = dst_width;
+        need_rotate = 1;
+        break;
+    case VDP_OUTPUT_SURFACE_RENDER_ROTATE_180:
+        rotate = ROT_180;
+        rot_width = dst_width;
+        rot_height = dst_height;
+        need_rotate = 1;
+        break;
+    case VDP_OUTPUT_SURFACE_RENDER_ROTATE_270:
+        rotate = ROT_270;
+        rot_width = dst_height;
+        rot_height = dst_width;
+        need_rotate = 1;
+        break;
+    default:
+        rotate = IDENTITY;
+        break;
+    }
+
+    if (src_surf) {
+        if (need_rotate) {
+            shared = shared_surface_get_video(src_surf);
+
+            if (shared) {
+                if (src_x0 == shared->dst_x0 &&
+                    src_y0 == shared->dst_y0 &&
+                    src_width == shared->dst_width &&
+                    src_height == shared->dst_height)
+                {
+                    DebugMsg("HW offloaded rotation\n");
+
+                    tmp_surf = alloc_surface(src_surf->dev,
+                                             src_width, src_height,
+                                             src_surf->rgba_format, 0, 0);
+                    if (tmp_surf) {
+                        ret = host1x_gr2d_surface_blit(shared->video->dev->stream,
+                                                       shared->video->pixbuf,
+                                                       tmp_surf->pixbuf,
+                                                       &shared->csc.gr2d,
+                                                       shared->src_x0,
+                                                       shared->src_y0,
+                                                       shared->src_width,
+                                                       shared->src_height,
+                                                       0,
+                                                       0,
+                                                       rot_width,
+                                                       rot_height);
+                        if (ret) {
+                            ErrorMsg("video surface blitting failed %d\n", ret);
+                            unref_surface(tmp_surf);
+                            tmp_surf = NULL;
+                        } else {
+                            src_x0 = 0;
+                            src_y0 = 0;
+                        }
+                    } else {
+                        ErrorMsg("Failed to allocate tmp surface\n");
+                    }
+                } else {
+                    ErrorMsg("HW offloaded rotation ---\n");
+                }
+
+                unref_shared_surface(shared);
+            }
+        }
+
+        if (!tmp_surf) {
+            ret = shared_surface_transfer_video(src_surf);
+            if (ret) {
+                put_surface(dst_surf);
+                put_surface(src_surf);
+                return VDP_STATUS_RESOURCES;
+            }
+        }
+    }
+
+    ret = shared_surface_transfer_video(dst_surf);
+    if (ret) {
+        put_surface(dst_surf);
+        put_surface(src_surf);
+        return VDP_STATUS_RESOURCES;
     }
 
     if (source_surface == VDP_INVALID_HANDLE) {
@@ -325,32 +417,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         }
     }
 
-    if (flags & ~3ul) {
-        ErrorMsg("invalid flags %X\n", flags);
-    }
-
-    switch (flags & 3) {
-    case VDP_OUTPUT_SURFACE_RENDER_ROTATE_90:
-    case VDP_OUTPUT_SURFACE_RENDER_ROTATE_180:
-    case VDP_OUTPUT_SURFACE_RENDER_ROTATE_270:
-        need_rotate = 1;
-        break;
-    default:
-        break;
-    }
-
-    if (source_rect != NULL) {
-        src_width = source_rect->x1 - source_rect->x0;
-        src_height = source_rect->y1 - source_rect->y0;
-        src_x0 = source_rect->x0;
-        src_y0 = source_rect->y0;
-    } else {
-        src_width = src_surf->width;
-        src_height = src_surf->height;
-        src_x0 = 0;
-        src_y0 = 0;
-    }
-
     DebugMsg("src_width %u src_height %u src_x0 %u src_y0 %u dst_width %u dst_height %u dst_x0 %u dst_y0 %u\n",
              src_width, src_height, src_x0, src_y0, dst_width, dst_height, dst_x0, dst_y0);
 
@@ -368,17 +434,29 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         break;
     }
 
-    if (!need_rotate) {
+    if (!need_rotate || tmp_surf) {
         pthread_mutex_lock(&dst_surf->dev->lock);
 
-        ret = host1x_gr2d_surface_blit(dst_surf->dev->stream,
-                                       src_surf->pixbuf,
-                                       dst_surf->pixbuf,
-                                       &csc_rgb_default,
-                                       src_x0, src_y0,
-                                       src_width, src_height,
-                                       dst_x0, dst_y0,
-                                       dst_width, dst_height);
+        if (tmp_surf) {
+            ret = host1x_gr2d_blit(tmp_surf->dev->stream,
+                                   tmp_surf->pixbuf,
+                                   dst_surf->pixbuf,
+                                   rotate,
+                                   src_x0, src_y0,
+                                   dst_x0, dst_y0,
+                                   rot_width, rot_height);
+
+            unref_surface(tmp_surf);
+        } else {
+            ret = host1x_gr2d_surface_blit(dst_surf->dev->stream,
+                                           src_surf->pixbuf,
+                                           dst_surf->pixbuf,
+                                           &csc_rgb_default,
+                                           src_x0, src_y0,
+                                           src_width, src_height,
+                                           dst_x0, dst_y0,
+                                           dst_width, dst_height);
+        }
         if (ret) {
             ErrorMsg("surface copying failed %d\n", ret);
         }

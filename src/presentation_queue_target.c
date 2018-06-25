@@ -343,6 +343,7 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
         ret = host1x_gr2d_blit(pqt->dev->stream,
                                surf->pixbuf,
                                pqt->dri_pixbuf,
+                               IDENTITY,
                                0,
                                0,
                                0,

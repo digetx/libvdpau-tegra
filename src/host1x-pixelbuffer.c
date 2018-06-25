@@ -243,7 +243,7 @@ int host1x_pixelbuffer_load_data(struct drm_tegra *drm,
     memcpy(map, data, data_size);
 
     if (blit) {
-        ret = host1x_gr2d_blit(stream, tmp, pixbuf,
+        ret = host1x_gr2d_blit(stream, tmp, pixbuf, IDENTITY,
                                0, 0, 0, 0,
                                pixbuf->width, pixbuf->height);
         host1x_pixelbuffer_free(tmp);

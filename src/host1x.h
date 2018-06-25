@@ -168,9 +168,21 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
                                    unsigned clip_x1, unsigned clip_y1,
                                    bool draw_outside);
 
+enum host1x_2d_rotate {
+    FLIP_X,
+    FLIP_Y,
+    TRANS_LR,
+    TRANS_RL,
+    ROT_90,
+    ROT_180,
+    ROT_270,
+    IDENTITY,
+};
+
 int host1x_gr2d_blit(struct tegra_stream *stream,
                      struct host1x_pixelbuffer *src,
                      struct host1x_pixelbuffer *dst,
+                     enum host1x_2d_rotate rotate,
                      unsigned int sx, unsigned int sy,
                      unsigned int dx, unsigned int dy,
                      unsigned int width, int height);

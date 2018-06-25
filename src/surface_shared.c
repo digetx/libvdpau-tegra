@@ -351,3 +351,23 @@ void shared_surface_kill_disp(tegra_surface *disp)
         unref_shared_surface(shared);
     }
 }
+
+tegra_shared_surface * shared_surface_get_video(tegra_surface *disp)
+{
+    tegra_shared_surface *shared = NULL;
+
+    DebugMsg("surface %u\n", disp->surface_id);
+
+    pthread_mutex_lock(&disp->lock);
+    pthread_mutex_lock(&shared_lock);
+
+    shared = disp->shared;
+    if (shared) {
+        ref_shared_surface(shared);
+    }
+
+    pthread_mutex_unlock(&shared_lock);
+    pthread_mutex_unlock(&disp->lock);
+
+    return shared;
+}

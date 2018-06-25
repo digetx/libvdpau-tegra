@@ -515,6 +515,7 @@ tegra_surface *alloc_surface(tegra_device *dev,
     surf->width = width;
     surf->height = height;
     surf->rgba_format = rgba_format;
+    surf->surface_id = MAX_SURFACES_NB;
 
     if (!output) {
         ret = alloc_surface_data(surf);

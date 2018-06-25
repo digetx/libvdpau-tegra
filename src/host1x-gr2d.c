@@ -215,9 +215,32 @@ out_unlock:
     return err;
 }
 
+static uint32_t sb_offset(struct host1x_pixelbuffer *pixbuf,
+                          uint32_t xpos, uint32_t ypos)
+{
+    uint32_t offset;
+    uint32_t bytes_per_pixel = PIX_BUF_FORMAT_BYTES(pixbuf->format);
+    uint32_t pixels_per_line = pixbuf->pitch / bytes_per_pixel;
+    uint32_t xb;
+
+    if (pixbuf->layout == PIX_BUF_LAYOUT_LINEAR) {
+        offset = ypos * pixbuf->pitch;
+        offset += xpos * bytes_per_pixel;
+    } else {
+        xb = xpos * bytes_per_pixel;
+        offset = 16 * pixels_per_line * (ypos / 16);
+        offset += 256 * (xb / 16);
+        offset += 16 * (ypos % 16);
+        offset += xb % 16;
+    }
+
+    return offset;
+}
+
 int host1x_gr2d_blit(struct tegra_stream *stream,
                      struct host1x_pixelbuffer *src,
                      struct host1x_pixelbuffer *dst,
+                     enum host1x_2d_rotate rotate,
                      unsigned int sx, unsigned int sy,
                      unsigned int dx, unsigned int dy,
                      unsigned int width, int height)
@@ -227,6 +250,13 @@ int host1x_gr2d_blit(struct tegra_stream *stream,
     unsigned yflip = 0;
     unsigned xdir = 0;
     unsigned ydir = 0;
+    unsigned fr_mode;
+    unsigned src_width;
+    unsigned src_height;
+    unsigned dst_width;
+    unsigned dst_height;
+    uint32_t dst_offset;
+    uint32_t src_offset;
     int err;
 
     if (!src)
@@ -237,11 +267,10 @@ int host1x_gr2d_blit(struct tegra_stream *stream,
 
     DebugMsg("pixbuf src width %u height %u format %u "
              "dst width %u height %u format %u "
-             "sx %u sy %u dx %u dy %u width %u height %u\n",
+             "sx %u sy %u dx %u dy %u width %u height %u rotate %u\n",
              src->width, src->height, src->format,
              dst->width, dst->height, dst->format,
-             sx, sy, dx, dy, width, height);
-
+             sx, sy, dx, dy, width, height, rotate);
 
     if (PIX_BUF_FORMAT_BYTES(src->format) !=
         PIX_BUF_FORMAT_BYTES(dst->format))
@@ -275,12 +304,51 @@ int host1x_gr2d_blit(struct tegra_stream *stream,
         height = -height;
     }
 
-    if (sx + width > src->width ||
-        dx + width > dst->width ||
-        sy + height > src->height ||
-        dy + height > dst->height) {
+    switch (rotate) {
+    case ROT_90:
+    case ROT_270:
+        src_width = width;
+        src_height = height;
+
+        dst_width = height;
+        dst_height = width;
+        break;
+
+    default:
+        src_width = width;
+        src_height = height;
+
+        dst_width = width;
+        dst_height = height;
+        break;
+    }
+
+    if (sx + src_width > src->width ||
+        dx + dst_width > dst->width ||
+        sy + src_height > src->height ||
+        dy + dst_height > dst->height) {
         host1x_error("Coords out of range\n");
         return -EINVAL;
+    }
+
+    switch (rotate) {
+    case ROT_90:
+    case ROT_270:
+    case FLIP_X:
+    case FLIP_Y:
+    case TRANS_LR:
+    case TRANS_RL:
+    case ROT_180:
+        src_width = width - 1;
+        src_height = height - 1;
+        src_offset = sb_offset(src, sx, sy);
+        dst_offset = sb_offset(dst, dx, dy);
+        break;
+
+    default:
+        src_offset = 0;
+        dst_offset = 0;
+        break;
     }
 
     if (src != dst)
@@ -308,6 +376,12 @@ yflip_setup:
     if (yflip && !ydir)
         dy += height - 1;
 
+    if (rotate < IDENTITY) {
+        fr_mode = 1; /* SRC_DST_COPY */
+    } else {
+        fr_mode = 0; /* DISABLE */
+    }
+
     pthread_mutex_lock(&stream_lock);
 
     err = tegra_stream_begin(stream);
@@ -321,7 +395,7 @@ yflip_setup:
     tegra_stream_push(stream, 0x00000000); /* cmdsel */
 
     tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x01e, 0x7));
-    tegra_stream_push(stream, 0x00000000); /* controlsecond */
+    tegra_stream_push(stream, rotate << 26 | fr_mode << 24); /* controlsecond */
     /*
      * [20:20] source color depth (0: mono, 1: same)
      * [17:16] destination color depth (0: 8 bpp, 1: 16 bpp, 2: 32 bpp)
@@ -339,12 +413,13 @@ yflip_setup:
      */
     tegra_stream_push(stream, dst_tiled << 20 | src_tiled); /* tilemode */
 
-    tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x02b, 0xe149));
-    tegra_stream_push_reloc(stream, dst->bo, 0); /* dstba */
+    tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x02b, 0xf149));
+    tegra_stream_push_reloc(stream, dst->bo, dst_offset); /* dstba */
     tegra_stream_push(stream, dst->pitch); /* dstst */
-    tegra_stream_push_reloc(stream, src->bo, 0); /* srcba */
+    tegra_stream_push_reloc(stream, src->bo, src_offset); /* srcba */
     tegra_stream_push(stream, src->pitch); /* srcst */
-    tegra_stream_push(stream, height << 16 | width); /* dstsize */
+    tegra_stream_push(stream, src_height << 16 | src_width); /* srcsize */
+    tegra_stream_push(stream, dst_height << 16 | dst_width); /* dstsize */
     tegra_stream_push(stream, sy << 16 | sx); /* srcps */
     tegra_stream_push(stream, dy << 16 | dx); /* dstps */
 
@@ -362,28 +437,6 @@ out_unlock:
     pthread_mutex_unlock(&stream_lock);
 
     return err;
-}
-
-static uint32_t sb_offset(struct host1x_pixelbuffer *pixbuf,
-                          uint32_t xpos, uint32_t ypos)
-{
-    uint32_t offset;
-    uint32_t bytes_per_pixel = PIX_BUF_FORMAT_BYTES(pixbuf->format);
-    uint32_t pixels_per_line = pixbuf->pitch / bytes_per_pixel;
-    uint32_t xb;
-
-    if (pixbuf->layout == PIX_BUF_LAYOUT_LINEAR) {
-        offset = ypos * pixbuf->pitch;
-        offset += xpos * bytes_per_pixel;
-    } else {
-        xb = xpos * bytes_per_pixel;
-        offset = 16 * pixels_per_line * (ypos / 16);
-        offset += 256 * (xb / 16);
-        offset += 16 * (ypos % 16);
-        offset += xb % 16;
-    }
-
-    return offset;
 }
 
 int host1x_gr2d_surface_blit(struct tegra_stream *stream,
