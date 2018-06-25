@@ -339,7 +339,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                         ErrorMsg("Failed to allocate tmp surface\n");
                     }
                 } else {
-                    ErrorMsg("HW offloaded rotation ---\n");
+                    DebugMsg("rotation can't be offloaded to HW\n");
                 }
 
                 unref_shared_surface(shared);
