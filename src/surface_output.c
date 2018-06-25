@@ -289,7 +289,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         need_rotate = 1;
         break;
     case VDP_OUTPUT_SURFACE_RENDER_ROTATE_270:
-        rotate = ROT_270;
+        rotate = ROT_90;
         rot_width = dst_height;
         rot_height = dst_width;
         need_rotate = 1;
