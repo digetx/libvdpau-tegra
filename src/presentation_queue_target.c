@@ -181,11 +181,9 @@ static void pqt_display_dri(tegra_pqt *pqt, tegra_surface *surf)
 
     DebugMsg("surface %u DRI\n", surf->surface_id);
 
-    pthread_mutex_lock(&dev->lock);
     DRI2GetMSC(dev->display, pqt->drawable, &ust, &msc, &sbc);
     DRI2SwapBuffers(dev->display, pqt->drawable, 0, 0, 0, &count);
     DRI2WaitMSC(dev->display, pqt->drawable, msc + 1, 1, 1, &ust, &msc, &sbc);
-    pthread_mutex_unlock(&dev->lock);
 
     if (pqt->dri_prep_surf == surf) {
         pqt->dri_prep_surf = NULL;
@@ -299,7 +297,6 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
     DebugMsg("surface %u+\n", surf->surface_id);
 
     pthread_mutex_lock(&surf->lock);
-    pthread_mutex_lock(&pqt->dev->lock);
 
     if (surf->shared) {
         DebugMsg("surface %u transfer YUV\n", surf->surface_id);
@@ -357,7 +354,6 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
         DebugMsg("surface %u is absent\n", surf->surface_id);
     }
 
-    pthread_mutex_unlock(&pqt->dev->lock);
     pthread_mutex_unlock(&surf->lock);
 
     DebugMsg("surface %u-\n", surf->surface_id);

@@ -271,8 +271,6 @@ int shared_surface_transfer_video(tegra_surface *disp)
 
     assert(disp->flags & SURFACE_OUTPUT);
 
-    pthread_mutex_lock(&disp->dev->lock);
-
     DebugMsg("%p disp %u video %u\n",
              shared,
              shared->disp->surface_id,
@@ -312,8 +310,6 @@ int shared_surface_transfer_video(tegra_surface *disp)
     if (ret) {
         ErrorMsg("video transfer failed %d\n", ret);
     }
-
-    pthread_mutex_unlock(&disp->dev->lock);
 
 unshare:
     pthread_mutex_lock(&shared_lock);

@@ -556,8 +556,6 @@ VdpStatus vdp_video_mixer_render(
                 return VDP_STATUS_RESOURCES;
             }
 
-            pthread_mutex_lock(&mix->dev->lock);
-
             ret = host1x_gr2d_clear_rect_clipped(mix->dev->stream,
                                                  dest_surf->pixbuf,
                                                  bg_color,
@@ -573,8 +571,6 @@ VdpStatus vdp_video_mixer_render(
             if (ret) {
                 ErrorMsg("setting BG failed %d\n", ret);
             }
-
-            pthread_mutex_unlock(&mix->dev->lock);
         } else {
             dest_surf->bg_color = bg_color;
             dest_surf->set_bg = true;
@@ -595,8 +591,6 @@ VdpStatus vdp_video_mixer_render(
             return VDP_STATUS_RESOURCES;
         }
 
-        pthread_mutex_lock(&mix->dev->lock);
-
         ret = host1x_gr2d_surface_blit(mix->dev->stream,
                                        bg_surf->pixbuf,
                                        dest_surf->pixbuf,
@@ -612,8 +606,6 @@ VdpStatus vdp_video_mixer_render(
         if (ret) {
             ErrorMsg("copying BG failed %d\n", ret);
         }
-
-        pthread_mutex_unlock(&mix->dev->lock);
     }
 
     if (bg_surf) {
@@ -647,8 +639,6 @@ VdpStatus vdp_video_mixer_render(
                 return VDP_STATUS_RESOURCES;
             }
 
-            pthread_mutex_lock(&mix->dev->lock);
-
             ret = host1x_gr2d_clear_rect_clipped(mix->dev->stream,
                                                  dest_surf->pixbuf,
                                                  bg_color,
@@ -665,15 +655,11 @@ VdpStatus vdp_video_mixer_render(
                 ErrorMsg("setting BG failed %d\n", ret);
             }
 
-            pthread_mutex_unlock(&mix->dev->lock);
-
             dest_surf->set_bg = false;
         }
     }
 
     if (!shared) {
-        pthread_mutex_lock(&mix->dev->lock);
-
         ret = host1x_gr2d_surface_blit(mix->dev->stream,
                                        video_surf->pixbuf,
                                        dest_surf->pixbuf,
@@ -689,8 +675,6 @@ VdpStatus vdp_video_mixer_render(
         if (ret) {
             ErrorMsg("video transfer failed %d\n", ret);
         }
-
-        pthread_mutex_unlock(&mix->dev->lock);
     }
 
     while (layer_count--) {
