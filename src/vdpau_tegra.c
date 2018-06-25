@@ -185,6 +185,48 @@ tegra_surface * get_surface(VdpBitmapSurface surface)
     return surf;
 }
 
+tegra_surface * get_surface_bitmap(VdpBitmapSurface surface)
+{
+    tegra_surface *surf = get_surface(surface);
+
+    if (surf) {
+        if (surf->flags & (SURFACE_OUTPUT | SURFACE_VIDEO)) {
+            put_surface(surf);
+            return NULL;
+        }
+    }
+
+    return surf;
+}
+
+tegra_surface * get_surface_output(VdpBitmapSurface surface)
+{
+    tegra_surface *surf = get_surface(surface);
+
+    if (surf) {
+        if (!(surf->flags & SURFACE_OUTPUT)) {
+            put_surface(surf);
+            return NULL;
+        }
+    }
+
+    return surf;
+}
+
+tegra_surface * get_surface_video(VdpBitmapSurface surface)
+{
+    tegra_surface *surf = get_surface(surface);
+
+    if (surf) {
+        if (!(surf->flags & SURFACE_VIDEO)) {
+            put_surface(surf);
+            return NULL;
+        }
+    }
+
+    return surf;
+}
+
 void set_surface(VdpBitmapSurface surface, tegra_surface *surf)
 {
     if (surface >= MAX_SURFACES_NB) {

@@ -90,14 +90,29 @@ VdpStatus vdp_video_surface_create(VdpDevice device,
 
 VdpStatus vdp_video_surface_destroy(VdpVideoSurface surface)
 {
-    return vdp_bitmap_surface_destroy(surface);
+    tegra_surface *surf = get_surface_video(surface);
+    uint32_t flags;
+
+    if (surf == NULL) {
+        return VDP_INVALID_HANDLE;
+    }
+
+    flags = surf->flags;
+
+    put_surface(surf);
+
+    if (!(flags & SURFACE_VIDEO)) {
+        return VDP_INVALID_HANDLE;
+    }
+
+    return destroy_surface(surf);
 }
 
 VdpStatus vdp_video_surface_get_parameters(VdpVideoSurface surface,
                                            VdpChromaType *chroma_type,
                                            uint32_t *width, uint32_t *height)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf = get_surface_video(surface);
 
     if (surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -128,7 +143,7 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
                                         void *const *destination_data,
                                         uint32_t const *destination_pitches)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf = get_surface_video(surface);
     void *dst_y  = destination_data[0];
     void *dst_cr = destination_data[1];
     void *dst_cb = destination_data[2];
@@ -227,7 +242,7 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
                                             void const *const *source_data,
                                             uint32_t const *source_pitches)
 {
-    tegra_surface *surf, *orig = get_surface(surface);
+    tegra_surface *surf, *orig = get_surface_video(surface);
     void *src_y  = (void *)source_data[0];
     void *src_cr = (void *)source_data[1];
     void *src_cb = (void *)source_data[2];

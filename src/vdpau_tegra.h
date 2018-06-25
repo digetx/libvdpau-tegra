@@ -134,6 +134,7 @@ typedef struct tegra_device {
     Display *display;
     XvPortID xv_port;
     atomic_t refcnt;
+    unsigned int surf_id_itr;
     bool dri2_inited;
     bool dri2_ready;
     bool xv_ready;
@@ -284,6 +285,9 @@ void set_mixer(VdpVideoMixer mixer, tegra_mixer *mix);
 
 tegra_surface * __get_surface(VdpBitmapSurface surface);
 tegra_surface * get_surface(VdpBitmapSurface surface);
+tegra_surface * get_surface_bitmap(VdpBitmapSurface surface);
+tegra_surface * get_surface_output(VdpBitmapSurface surface);
+tegra_surface * get_surface_video(VdpBitmapSurface surface);
 void ref_surface(tegra_surface *surf);
 VdpStatus unref_surface(tegra_surface *surf);
 #define put_surface(__surf) ({ if (__surf) unref_surface(__surf); })

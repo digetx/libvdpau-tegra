@@ -19,12 +19,14 @@
 
 #include "vdpau_tegra.h"
 
-static uint32_t get_unused_surface_id(void)
+static uint32_t get_unused_surface_id(tegra_device *dev)
 {
-    uint32_t id;
+    uint32_t ret_id, id;
 
     for (id = 0; id < MAX_SURFACES_NB; id++) {
-        if (__get_surface(id) == NULL) {
+        ret_id = dev->surf_id_itr++ % MAX_SURFACES_NB;
+
+        if (__get_surface(ret_id) == NULL) {
             break;
         }
     }
@@ -33,7 +35,7 @@ static uint32_t get_unused_surface_id(void)
         return VDP_INVALID_HANDLE;
     }
 
-    return id;
+    return ret_id;
 }
 
 int dynamic_alloc_surface_data(tegra_surface *surf)
@@ -555,7 +557,7 @@ uint32_t create_surface(tegra_device *dev,
 
     pthread_mutex_lock(&global_lock);
 
-    surface_id = get_unused_surface_id();
+    surface_id = get_unused_surface_id(dev);
 
     if (surface_id != VDP_INVALID_HANDLE) {
         set_surface(surface_id, surf);
@@ -565,7 +567,8 @@ uint32_t create_surface(tegra_device *dev,
 
     if (surface_id != VDP_INVALID_HANDLE) {
         surf->surface_id = surface_id;
-        DebugMsg("surface %u %p\n", surface_id, surf);
+        DebugMsg("surface %u %p output %d video %d\n",
+                 surface_id, surf, output, video);
     } else {
         destroy_surface(surf);
     }

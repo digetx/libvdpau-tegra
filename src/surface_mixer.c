@@ -450,9 +450,9 @@ VdpStatus vdp_video_mixer_render(
                         uint32_t layer_count,
                         VdpLayer const *layers)
 {
-    tegra_surface *bg_surf = get_surface(background_surface);
-    tegra_surface *dest_surf = get_surface(destination_surface);
-    tegra_surface *video_surf = get_surface(video_surface_current);
+    tegra_surface *bg_surf = get_surface_bitmap(background_surface);
+    tegra_surface *dest_surf = get_surface_output(destination_surface);
+    tegra_surface *video_surf = get_surface_video(video_surface_current);
     tegra_mixer *mix = get_mixer(mixer);
     tegra_shared_surface *shared = NULL;
     uint32_t src_vid_width, src_vid_height, src_vid_x0, src_vid_y0;
@@ -462,7 +462,7 @@ VdpStatus vdp_video_mixer_render(
     bool draw_background = false;
     int ret;
 
-    if (dest_surf == NULL || mix == NULL) {
+    if (dest_surf == NULL || video_surf == NULL || mix == NULL) {
         put_mixer(mix);
         put_surface(bg_surf);
         put_surface(dest_surf);

@@ -85,7 +85,7 @@ VdpStatus vdp_bitmap_surface_create(VdpDevice device,
 
 VdpStatus vdp_bitmap_surface_destroy(VdpBitmapSurface surface)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf = get_surface_bitmap(surface);
 
     if (surf == NULL) {
         return VDP_INVALID_HANDLE;

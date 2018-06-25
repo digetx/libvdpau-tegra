@@ -192,7 +192,7 @@ static int get_refs_sorted(struct tegra_vde_h264_frame *dpb_frames,
 
     for (i = 0, refs_num = 0; i < 16; i++) {
         ref  = &referenceFrames[i];
-        surf = get_surface(ref->surface);
+        surf = get_surface_video(ref->surface);
 
         if (!surf) {
             if (ref->surface != VDP_INVALID_HANDLE) {
@@ -296,7 +296,7 @@ static int get_refs_dpb_order(struct tegra_vde_h264_frame *dpb_frames,
 
     for (i = 0, refs_num = 0; i < 16; i++) {
         ref  = &referenceFrames[i];
-        surf = get_surface(ref->surface);
+        surf = get_surface_video(ref->surface);
 
         if (!surf) {
             if (ref->surface != VDP_INVALID_HANDLE) {
@@ -617,7 +617,7 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
                              VdpBitstreamBuffer const *bufs)
 {
     tegra_decoder *dec = get_decoder(decoder);
-    tegra_surface *orig, *surf = get_surface(target);
+    tegra_surface *orig, *surf = get_surface_video(target);
     struct drm_tegra_bo *bitstream_bo;
     bitstream_reader bitstream_reader;
     int bitstream_data_fd;

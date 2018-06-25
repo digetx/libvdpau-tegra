@@ -312,7 +312,7 @@ VdpStatus vdp_presentation_queue_display(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
-    surf = get_surface(surface);
+    surf = get_surface_output(surface);
     if (surf == NULL) {
         /* This will happen on surface allocation failure. */
         return VDP_STATUS_RESOURCES;
@@ -365,7 +365,7 @@ VdpStatus vdp_presentation_queue_block_until_surface_idle(
                                         VdpOutputSurface surface,
                                         VdpTime *first_presentation_time)
 {
-    tegra_surface *itr, *surf = get_surface(surface);
+    tegra_surface *itr, *surf = get_surface_output(surface);
     tegra_pq *pq = get_presentation_queue(presentation_queue);
     VdpStatus ret = VDP_STATUS_ERROR;
     int err;
@@ -429,7 +429,7 @@ VdpStatus vdp_presentation_queue_query_surface_status(
                                         VdpPresentationQueueStatus *status,
                                         VdpTime *first_presentation_time)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf = get_surface_output(surface);
     tegra_pq *pq = get_presentation_queue(presentation_queue);
 
     if (surf == NULL || pq == NULL) {

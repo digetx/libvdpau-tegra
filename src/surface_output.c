@@ -124,7 +124,15 @@ VdpStatus vdp_output_surface_create(VdpDevice device,
 
 VdpStatus vdp_output_surface_destroy(VdpOutputSurface surface)
 {
-    return vdp_bitmap_surface_destroy(surface);
+    tegra_surface *surf = get_surface_output(surface);
+
+    if (surf == NULL) {
+        return VDP_INVALID_HANDLE;
+    }
+
+    put_surface(surf);
+
+    return destroy_surface(surf);
 }
 
 VdpStatus vdp_output_surface_get_parameters(VdpOutputSurface surface,
@@ -142,7 +150,7 @@ VdpStatus vdp_output_surface_get_bits_native(VdpOutputSurface surface,
                                              void *const *destination_data,
                                              uint32_t const *destination_pitches)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf = get_surface_output(surface);
 
     if (surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -171,7 +179,7 @@ VdpStatus vdp_output_surface_put_bits_indexed(
                                         VdpColorTableFormat color_table_format,
                                         void const *color_table)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf = get_surface_output(surface);
 
     if (surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -190,7 +198,7 @@ VdpStatus vdp_output_surface_put_bits_y_cb_cr(
                                         VdpRect const *destination_rect,
                                         VdpCSCMatrix const *csc_matrix)
 {
-    tegra_surface *surf = get_surface(surface);
+    tegra_surface *surf = get_surface_output(surface);
 
     if (surf == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -210,7 +218,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                             VdpOutputSurfaceRenderBlendState const *blend_state,
                             uint32_t flags)
 {
-    tegra_surface *dst_surf = get_surface(destination_surface);
+    tegra_surface *dst_surf = get_surface_output(destination_surface);
     tegra_surface *src_surf = get_surface(source_surface);
     tegra_surface *tmp_surf = NULL;
     tegra_shared_surface *shared;
