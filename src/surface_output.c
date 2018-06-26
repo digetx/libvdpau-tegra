@@ -306,7 +306,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         pthread_mutex_lock(&src_surf->lock);
 
         shared = shared_surface_get(src_surf);
-        if (!src_surf->data_allocated) {
+        if (!shared && !src_surf->data_allocated) {
             source_surface = VDP_INVALID_HANDLE;
             clear_color = 0;
         }
@@ -356,8 +356,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                 } else {
                     DebugMsg("rotation can't be offloaded to HW\n");
                 }
-
-                unref_shared_surface(shared);
             } else {
                 DebugMsg("HW-offloaded surface rotation\n");
 
@@ -390,6 +388,10 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
             }
         }
 
+        if (shared) {
+            unref_shared_surface(shared);
+        }
+
         if (!tmp_surf) {
             ret = shared_surface_transfer_video(src_surf);
             if (ret) {
@@ -413,7 +415,9 @@ out_1:
             return VDP_STATUS_OK;
         }
 
-        unref_shared_surface(shared);
+        if (shared){
+            unref_shared_surface(shared);
+        }
     }
 
     ret = shared_surface_transfer_video(dst_surf);
