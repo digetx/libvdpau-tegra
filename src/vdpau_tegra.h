@@ -84,8 +84,7 @@
 #define MAX_PRESENTATION_QUEUES_NB          128
 
 #define SURFACE_VIDEO               (1 << 0)
-#define SURFACE_DATA_NEEDS_SYNC     (1 << 1)
-#define SURFACE_OUTPUT              (1 << 2)
+#define SURFACE_OUTPUT              (1 << 1)
 
 #define PASSTHROUGH_DATA_SIZE   36
 
@@ -336,15 +335,6 @@ int sync_dmabuf_write_start(int dmabuf_fd);
 int sync_dmabuf_write_end(int dmabuf_fd);
 int sync_dmabuf_read_start(int dmabuf_fd);
 int sync_dmabuf_read_end(int dmabuf_fd);
-
-enum frame_sync {
-    READ_START,
-    READ_END,
-    WRITE_START,
-    WRITE_END,
-};
-
-int sync_video_frame_dmabufs(tegra_surface *surf, enum frame_sync type);
 
 tegra_shared_surface *create_shared_surface(tegra_surface *disp,
                                             tegra_surface *video,

@@ -167,14 +167,6 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
         return VDP_STATUS_NO_IMPLEMENTATION;
     }
 
-    ret = sync_video_frame_dmabufs(surf, READ_START);
-
-    if (ret) {
-        pthread_mutex_unlock(&surf->lock);
-        put_surface(surf);
-        return ret;
-    }
-
     ret = map_surface_data(surf);
     if (ret) {
         pthread_mutex_unlock(&surf->lock);
@@ -220,16 +212,6 @@ VdpStatus vdp_video_surface_get_bits_y_cb_cr(
 
     unmap_surface_data(surf);
 
-    ret = sync_video_frame_dmabufs(surf, READ_END);
-
-    if (ret) {
-        pthread_mutex_unlock(&surf->lock);
-        put_surface(surf);
-        return ret;
-    }
-
-    surf->flags &= ~SURFACE_DATA_NEEDS_SYNC;
-
     pthread_mutex_unlock(&surf->lock);
     put_surface(surf);
 
@@ -268,13 +250,6 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
     if (orig != surf) {
         put_surface(orig);
         ref_surface(surf);
-    }
-
-    ret = sync_video_frame_dmabufs(surf, WRITE_START);
-
-    if (ret) {
-        put_surface(surf);
-        return ret;
     }
 
     ret = map_surface_data(surf);
@@ -322,15 +297,6 @@ VdpStatus vdp_video_surface_put_bits_y_cb_cr(
     host1x_pixelbuffer_check_guard(surf->pixbuf);
 
     unmap_surface_data(surf);
-
-    ret = sync_video_frame_dmabufs(surf, WRITE_END);
-
-    if (ret) {
-        put_surface(surf);
-        return ret;
-    }
-
-    surf->flags &= ~SURFACE_DATA_NEEDS_SYNC;
 
     put_surface(surf);
 

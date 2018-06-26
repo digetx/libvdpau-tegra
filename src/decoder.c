@@ -93,7 +93,7 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
     char *bitstream;
     uint32_t total_size = 0;
     uint32_t aligned_size = 0;
-    int ret, i;
+    int i;
 
     for (i = 0; i < count; i++) {
         if (bufs[i].struct_version != VDP_BITSTREAM_BUFFER_VERSION) {
@@ -123,12 +123,6 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
 
     total_size = aligned_size;
 
-    ret = sync_dmabuf_write_start(*data_fd);
-    if (ret) {
-        free_data(*bo, *data_fd);
-        return VDP_STATUS_ERROR;
-    }
-
     end = start + total_size;
     bitstream = start;
 
@@ -137,12 +131,6 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
         bitstream += bufs[i].bitstream_bytes;
     }
     memset(bitstream, 0x0, end - bitstream);
-
-    ret = sync_dmabuf_write_end(*data_fd);
-    if (ret) {
-        free_data(*bo, *data_fd);
-        return VDP_STATUS_ERROR;
-    }
 
     bitstream = start;
     bitstream_init(reader, bitstream, total_size);
@@ -657,8 +645,6 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
         put_decoder(dec);
         return ret;
     }
-
-    surf->flags |= SURFACE_DATA_NEEDS_SYNC;
 
     put_surface(surf);
     put_decoder(dec);
