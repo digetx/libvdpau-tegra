@@ -175,8 +175,10 @@ tegra_surface * get_surface(VdpBitmapSurface surface)
     if (surface < MAX_SURFACES_NB) {
         surf = tegra_surfaces[surface];
 
-        if (surf) {
+        if (surf && !surf->destroyed) {
             atomic_inc(&surf->refcnt);
+        } else {
+            surf = NULL;
         }
     }
 

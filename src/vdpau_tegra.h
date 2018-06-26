@@ -157,6 +157,8 @@ typedef struct tegra_surface {
     tegra_device *dev;
     struct tegra_stream stream;
 
+    bool destroyed;
+
     struct tegra_vde_h264_frame *frame;
     int32_t pic_order_cnt;
 

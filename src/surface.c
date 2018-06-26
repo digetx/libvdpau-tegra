@@ -610,6 +610,7 @@ VdpStatus destroy_surface(tegra_surface *surf)
         shared_surface_kill_disp(surf);
     }
     surf->earliest_presentation_time = 0;
+    surf->destroyed = true;
     pthread_mutex_unlock(&surf->lock);
 
     unref_surface(surf);
