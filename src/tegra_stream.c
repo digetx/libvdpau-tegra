@@ -28,7 +28,7 @@
 #include "vdpau_tegra.h"
 
 /*
- * tegra_stream_create(channel)
+ * tegra_stream_init(channel)
  *
  * Create a stream for given channel. This function preallocates several
  * command buffers for later usage to improve performance. Streams are
@@ -36,10 +36,10 @@
  * tegra_stream_push().
  */
 
-int tegra_stream_create(struct drm_tegra *drm,
-                        struct drm_tegra_channel *channel,
-                        struct tegra_stream *stream,
-                        uint32_t words_num)
+int tegra_stream_init(struct drm_tegra *drm,
+                      struct drm_tegra_channel *channel,
+                      struct tegra_stream *stream,
+                      uint32_t words_num)
 {
     stream->status    = TEGRADRM_STREAM_FREE;
     stream->channel   = channel;
@@ -49,12 +49,12 @@ int tegra_stream_create(struct drm_tegra *drm,
 }
 
 /*
- * tegra_stream_destroy(stream)
+ * tegra_stream_release(stream)
  *
  * Destroy the given stream object. All resrouces are released.
  */
 
-void tegra_stream_destroy(struct tegra_stream *stream)
+void tegra_stream_release(struct tegra_stream *stream)
 {
     if (!stream)
         return;

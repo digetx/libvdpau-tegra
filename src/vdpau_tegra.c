@@ -570,12 +570,10 @@ VdpStatus unref_device(tegra_device *dev)
         XvUngrabPort(dev->display, dev->xv_port, CurrentTime);
     }
 
-    tegra_stream_destroy(dev->stream);
     drm_tegra_channel_close(dev->gr2d);
     drm_tegra_close(dev->drm);
     close(dev->vde_fd);
     close(dev->drm_fd);
-    free(dev->stream);
     free(dev);
 
     return VDP_STATUS_OK;
@@ -670,7 +668,6 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
 {
     struct drm_tegra *drm = NULL;
     struct drm_tegra_channel *gr2d = NULL;
-    struct tegra_stream *stream = NULL;
     VdpDevice i;
     drm_magic_t magic;
     bool dri_failed;
@@ -731,18 +728,6 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
         ErrorMsg("failed to open 2D channel: %d\n", ret);
     }
 
-    stream = calloc(1, sizeof(*stream));
-    if (!stream) {
-        ErrorMsg("failed to allocate command stream\n");
-        goto err_cleanup;
-    }
-
-    ret = tegra_stream_create(drm, gr2d, stream, 0);
-    if (ret < 0) {
-        ErrorMsg("failed to create command stream: %d\n", ret);
-        goto err_cleanup;
-    }
-
     pthread_mutex_lock(&global_lock);
 
     for (i = 0; i < MAX_DEVICES_NB; i++) {
@@ -758,7 +743,6 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
         goto err_cleanup;
     }
 
-    pthread_mutex_init(&tegra_devices[i]->lock, NULL);
     atomic_set(&tegra_devices[i]->refcnt, 1);
 
     if (initialize_xv(display, tegra_devices[i]) != Success) {
@@ -778,7 +762,6 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     tegra_devices[i]->screen = screen;
     tegra_devices[i]->vde_fd = vde_fd;
     tegra_devices[i]->drm_fd = drm_fd;
-    tegra_devices[i]->stream = stream;
     tegra_devices[i]->gr2d = gr2d;
     tegra_devices[i]->drm = drm;
 
@@ -788,11 +771,9 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     return VDP_STATUS_OK;
 
 err_cleanup:
-    tegra_stream_destroy(stream);
     drm_tegra_channel_close(gr2d);
     drm_tegra_close(drm);
     close(drm_fd);
-    free(stream);
 
     return VDP_STATUS_RESOURCES;
 }

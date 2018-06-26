@@ -129,8 +129,6 @@ extern pthread_mutex_t global_lock;
 typedef struct tegra_device {
     struct drm_tegra *drm;
     struct drm_tegra_channel *gr2d;
-    struct tegra_stream *stream;
-    pthread_mutex_t lock;
     Display *display;
     XvPortID xv_port;
     atomic_t refcnt;
@@ -157,6 +155,7 @@ typedef struct tegra_shared_surface {
 
 typedef struct tegra_surface {
     tegra_device *dev;
+    struct tegra_stream stream;
 
     struct tegra_vde_h264_frame *frame;
     int32_t pic_order_cnt;

@@ -315,7 +315,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                                              rot_width, rot_height,
                                              src_surf->rgba_format, 0, 0);
                     if (tmp_surf) {
-                        ret = host1x_gr2d_surface_blit(shared->video->dev->stream,
+                        ret = host1x_gr2d_surface_blit(&tmp_surf->stream,
                                                        shared->video->pixbuf,
                                                        tmp_surf->pixbuf,
                                                        &shared->csc,
@@ -349,7 +349,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
                 tmp_surf = alloc_surface(src_surf->dev, rot_width, rot_height,
                                          src_surf->rgba_format, 0, 0);
                 if (tmp_surf) {
-                    ret = host1x_gr2d_surface_blit(src_surf->dev->stream,
+                    ret = host1x_gr2d_surface_blit(&tmp_surf->stream,
                                                    src_surf->pixbuf,
                                                    tmp_surf->pixbuf,
                                                    &csc_rgb_default,
@@ -393,7 +393,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     }
 
     if (source_surface == VDP_INVALID_HANDLE) {
-        ret = host1x_gr2d_clear_rect(dst_surf->dev->stream,
+        ret = host1x_gr2d_clear_rect(&dst_surf->stream,
                                      dst_surf->pixbuf,
                                      0xFFFFFFFF,
                                      dst_x0, dst_y0,
@@ -469,7 +469,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
     if (!need_rotate || tmp_surf) {
         if (tmp_surf) {
-            ret = host1x_gr2d_blit(tmp_surf->dev->stream,
+            ret = host1x_gr2d_blit(&tmp_surf->stream,
                                    tmp_surf->pixbuf,
                                    dst_surf->pixbuf,
                                    rotate,
@@ -479,7 +479,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
             unref_surface(tmp_surf);
         } else {
-            ret = host1x_gr2d_surface_blit(dst_surf->dev->stream,
+            ret = host1x_gr2d_surface_blit(&dst_surf->stream,
                                            src_surf->pixbuf,
                                            dst_surf->pixbuf,
                                            &csc_rgb_default,

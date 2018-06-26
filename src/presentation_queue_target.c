@@ -302,7 +302,7 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
         DebugMsg("surface %u transfer YUV\n", surf->surface_id);
 
         if (surf->set_bg) {
-            ret = host1x_gr2d_clear_rect_clipped(surf->dev->stream,
+            ret = host1x_gr2d_clear_rect_clipped(&surf->stream,
                                                  pqt->dri_pixbuf,
                                                  surf->bg_color,
                                                  0,
@@ -319,7 +319,7 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
             }
         }
 
-        ret = host1x_gr2d_surface_blit(pqt->dev->stream,
+        ret = host1x_gr2d_surface_blit(&surf->stream,
                                        surf->shared->video->pixbuf,
                                        pqt->dri_pixbuf,
                                        &surf->shared->csc,
@@ -337,7 +337,7 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
     } else if (surf->pixbuf) {
         DebugMsg("surface %u transfer RGB\n", surf->surface_id);
 
-        ret = host1x_gr2d_blit(pqt->dev->stream,
+        ret = host1x_gr2d_blit(&surf->stream,
                                surf->pixbuf,
                                pqt->dri_pixbuf,
                                IDENTITY,
