@@ -235,6 +235,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     uint32_t dst_width, dst_height;
     int16_t dst_x0, dst_y0;
     uint32_t rot_width, rot_height;
+    uint32_t clear_color = 0xFFFFFFFF;
     int need_scale = 0;
     int need_rotate = 0;
     int ret;
@@ -296,13 +297,27 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         break;
     default:
         rotate = IDENTITY;
+        rot_width = dst_width;
+        rot_height = dst_height;
         break;
     }
 
     if (src_surf) {
-        if (need_rotate) {
-            shared = shared_surface_get(src_surf);
+        pthread_mutex_lock(&src_surf->lock);
 
+        shared = shared_surface_get(src_surf);
+        if (!src_surf->data_allocated) {
+            source_surface = VDP_INVALID_HANDLE;
+            clear_color = 0;
+        }
+
+        pthread_mutex_unlock(&src_surf->lock);
+
+        if (source_surface == VDP_INVALID_HANDLE) {
+            goto out_1;
+        }
+
+        if (need_rotate) {
             if (shared) {
                 if (src_x0 == shared->dst_x0 &&
                     src_y0 == shared->dst_y0 &&
@@ -385,8 +400,33 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
         }
     }
 
+out_1:
+    pthread_mutex_lock(&dst_surf->lock);
+
+    if (source_surface == VDP_INVALID_HANDLE && clear_color == 0) {
+        shared = shared_surface_get(dst_surf);
+
+        if (!shared && !dst_surf->data_allocated) {
+            pthread_mutex_unlock(&dst_surf->lock);
+            put_surface(dst_surf);
+            put_surface(src_surf);
+            return VDP_STATUS_OK;
+        }
+
+        unref_shared_surface(shared);
+    }
+
     ret = shared_surface_transfer_video(dst_surf);
     if (ret) {
+        pthread_mutex_unlock(&dst_surf->lock);
+        put_surface(dst_surf);
+        put_surface(src_surf);
+        return VDP_STATUS_RESOURCES;
+    }
+
+    ret = dynamic_alloc_surface_data(dst_surf);
+    if (ret) {
+        pthread_mutex_unlock(&dst_surf->lock);
         put_surface(dst_surf);
         put_surface(src_surf);
         return VDP_STATUS_RESOURCES;
@@ -395,11 +435,12 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     if (source_surface == VDP_INVALID_HANDLE) {
         ret = host1x_gr2d_clear_rect(&dst_surf->stream,
                                      dst_surf->pixbuf,
-                                     0xFFFFFFFF,
+                                     clear_color,
                                      dst_x0, dst_y0,
                                      dst_width, dst_height);
 
         if (ret == 0) {
+            pthread_mutex_unlock(&dst_surf->lock);
             put_surface(dst_surf);
             put_surface(src_surf);
             return VDP_STATUS_OK;
@@ -409,6 +450,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     if (source_surface == VDP_INVALID_HANDLE) {
         ret = map_surface_data(dst_surf);
         if (ret) {
+            pthread_mutex_unlock(&dst_surf->lock);
             put_surface(dst_surf);
             put_surface(src_surf);
             return VDP_STATUS_RESOURCES;
@@ -436,6 +478,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
         unmap_surface_data(dst_surf);
 
+        pthread_mutex_unlock(&dst_surf->lock);
         put_surface(dst_surf);
         put_surface(src_surf);
 
@@ -444,6 +487,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
     if (blend_state != NULL) {
         if (blend_state->struct_version != VDP_OUTPUT_SURFACE_RENDER_BLEND_STATE_VERSION) {
+            pthread_mutex_unlock(&dst_surf->lock);
             put_surface(dst_surf);
             put_surface(src_surf);
             return VDP_STATUS_INVALID_STRUCT_VERSION;
@@ -492,6 +536,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
             ErrorMsg("surface copying failed %d\n", ret);
         }
 
+        pthread_mutex_unlock(&dst_surf->lock);
         put_surface(dst_surf);
         put_surface(src_surf);
         return VDP_STATUS_OK;
@@ -499,6 +544,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
     ret = map_surface_data(dst_surf);
     if (ret) {
+        pthread_mutex_unlock(&dst_surf->lock);
         put_surface(dst_surf);
         put_surface(src_surf);
         return VDP_STATUS_RESOURCES;
@@ -508,6 +554,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     if (ret) {
         unmap_surface_data(dst_surf);
 
+        pthread_mutex_unlock(&dst_surf->lock);
         put_surface(dst_surf);
         put_surface(src_surf);
         return VDP_STATUS_RESOURCES;
@@ -541,6 +588,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
             unmap_surface_data(dst_surf);
             unmap_surface_data(src_surf);
 
+            pthread_mutex_unlock(&dst_surf->lock);
             put_surface(dst_surf);
             put_surface(src_surf);
             return VDP_STATUS_RESOURCES;
@@ -614,6 +662,7 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     unmap_surface_data(dst_surf);
     unmap_surface_data(src_surf);
 
+    pthread_mutex_unlock(&dst_surf->lock);
     put_surface(dst_surf);
     put_surface(src_surf);
 
