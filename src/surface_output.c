@@ -209,17 +209,15 @@ VdpStatus vdp_output_surface_put_bits_y_cb_cr(
     return VDP_STATUS_NO_IMPLEMENTATION;
 }
 
-VdpStatus vdp_output_surface_render_bitmap_surface(
-                            VdpOutputSurface destination_surface,
+static VdpStatus surface_render_bitmap_surface(
+                            tegra_surface *dst_surf,
                             VdpRect const *destination_rect,
-                            VdpBitmapSurface source_surface,
+                            tegra_surface *src_surf,
                             VdpRect const *source_rect,
                             VdpColor const *colors,
                             VdpOutputSurfaceRenderBlendState const *blend_state,
                             uint32_t flags)
 {
-    tegra_surface *dst_surf = get_surface_output(destination_surface);
-    tegra_surface *src_surf = get_surface(source_surface);
     tegra_surface *tmp_surf = NULL;
     tegra_shared_surface *shared;
     enum host1x_2d_rotate rotate;
@@ -239,14 +237,6 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
     int need_scale = 0;
     int need_rotate = 0;
     int ret;
-
-    if (dst_surf == NULL ||
-            (src_surf == NULL && source_surface != VDP_INVALID_HANDLE))
-    {
-        put_surface(dst_surf);
-        put_surface(src_surf);
-        return VDP_STATUS_INVALID_HANDLE;
-    }
 
     if (source_rect != NULL) {
         src_width = source_rect->x1 - source_rect->x0;
@@ -307,13 +297,14 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 
         shared = shared_surface_get(src_surf);
         if (!shared && !src_surf->data_allocated) {
-            source_surface = VDP_INVALID_HANDLE;
+            put_surface(src_surf);
             clear_color = 0;
+            src_surf = NULL;
         }
 
         pthread_mutex_unlock(&src_surf->lock);
 
-        if (source_surface == VDP_INVALID_HANDLE) {
+        if (src_surf == NULL) {
             goto out_1;
         }
 
@@ -405,13 +396,12 @@ VdpStatus vdp_output_surface_render_bitmap_surface(
 out_1:
     pthread_mutex_lock(&dst_surf->lock);
 
-    if (source_surface == VDP_INVALID_HANDLE && clear_color == 0) {
+    if (src_surf == NULL && clear_color == 0) {
         shared = shared_surface_get(dst_surf);
 
         if (!shared && !dst_surf->data_allocated) {
             pthread_mutex_unlock(&dst_surf->lock);
             put_surface(dst_surf);
-            put_surface(src_surf);
             return VDP_STATUS_OK;
         }
 
@@ -436,7 +426,7 @@ out_1:
         return VDP_STATUS_RESOURCES;
     }
 
-    if (source_surface == VDP_INVALID_HANDLE) {
+    if (src_surf == NULL) {
         ret = host1x_gr2d_clear_rect(&dst_surf->stream,
                                      dst_surf->pixbuf,
                                      clear_color,
@@ -446,17 +436,15 @@ out_1:
         if (ret == 0) {
             pthread_mutex_unlock(&dst_surf->lock);
             put_surface(dst_surf);
-            put_surface(src_surf);
             return VDP_STATUS_OK;
         }
     }
 
-    if (source_surface == VDP_INVALID_HANDLE) {
+    if (src_surf == NULL) {
         ret = map_surface_data(dst_surf);
         if (ret) {
             pthread_mutex_unlock(&dst_surf->lock);
             put_surface(dst_surf);
-            put_surface(src_surf);
             return VDP_STATUS_RESOURCES;
         }
 
@@ -673,6 +661,35 @@ out_1:
     return VDP_STATUS_OK;
 }
 
+VdpStatus vdp_output_surface_render_bitmap_surface(
+                            VdpOutputSurface destination_surface,
+                            VdpRect const *destination_rect,
+                            VdpBitmapSurface source_surface,
+                            VdpRect const *source_rect,
+                            VdpColor const *colors,
+                            VdpOutputSurfaceRenderBlendState const *blend_state,
+                            uint32_t flags)
+{
+    tegra_surface *dst_surf = get_surface_output(destination_surface);
+    tegra_surface *src_surf = get_surface_bitmap(source_surface);
+
+    if (dst_surf == NULL ||
+            (src_surf == NULL && source_surface != VDP_INVALID_HANDLE))
+    {
+        put_surface(dst_surf);
+        put_surface(src_surf);
+        return VDP_STATUS_INVALID_HANDLE;
+    }
+
+    return surface_render_bitmap_surface(dst_surf,
+                                         destination_rect,
+                                         src_surf,
+                                         source_rect,
+                                         colors,
+                                         blend_state,
+                                         flags);
+}
+
 VdpStatus vdp_output_surface_render_output_surface(
                             VdpOutputSurface destination_surface,
                             VdpRect const *destination_rect,
@@ -682,11 +699,22 @@ VdpStatus vdp_output_surface_render_output_surface(
                             VdpOutputSurfaceRenderBlendState const *blend_state,
                             uint32_t flags)
 {
-    return vdp_output_surface_render_bitmap_surface(destination_surface,
-                                                    destination_rect,
-                                                    source_surface,
-                                                    source_rect,
-                                                    colors,
-                                                    blend_state,
-                                                    flags);
+    tegra_surface *dst_surf = get_surface_output(destination_surface);
+    tegra_surface *src_surf = get_surface_output(source_surface);
+
+    if (dst_surf == NULL ||
+            (src_surf == NULL && source_surface != VDP_INVALID_HANDLE))
+    {
+        put_surface(dst_surf);
+        put_surface(src_surf);
+        return VDP_STATUS_INVALID_HANDLE;
+    }
+
+    return surface_render_bitmap_surface(dst_surf,
+                                         destination_rect,
+                                         src_surf,
+                                         source_rect,
+                                         colors,
+                                         blend_state,
+                                         flags);
 }
