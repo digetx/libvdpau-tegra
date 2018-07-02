@@ -556,7 +556,7 @@ VdpStatus vdp_video_mixer_render(
                 return VDP_STATUS_RESOURCES;
             }
 
-            ret = host1x_gr2d_clear_rect_clipped(&dest_surf->stream,
+            ret = host1x_gr2d_clear_rect_clipped(&dest_surf->stream_2d,
                                                  dest_surf->pixbuf,
                                                  bg_color,
                                                  bg_x0,
@@ -591,7 +591,7 @@ VdpStatus vdp_video_mixer_render(
             return VDP_STATUS_RESOURCES;
         }
 
-        ret = host1x_gr2d_surface_blit(&dest_surf->stream,
+        ret = host1x_gr2d_surface_blit(&dest_surf->stream_2d,
                                        bg_surf->pixbuf,
                                        dest_surf->pixbuf,
                                        &csc_rgb_default,
@@ -639,7 +639,7 @@ VdpStatus vdp_video_mixer_render(
                 return VDP_STATUS_RESOURCES;
             }
 
-            ret = host1x_gr2d_clear_rect_clipped(&dest_surf->stream,
+            ret = host1x_gr2d_clear_rect_clipped(&dest_surf->stream_2d,
                                                  dest_surf->pixbuf,
                                                  bg_color,
                                                  bg_x0,
@@ -660,7 +660,7 @@ VdpStatus vdp_video_mixer_render(
     }
 
     if (!shared) {
-        ret = host1x_gr2d_surface_blit(&dest_surf->stream,
+        ret = host1x_gr2d_surface_blit(&dest_surf->stream_2d,
                                        video_surf->pixbuf,
                                        dest_surf->pixbuf,
                                        &mix->csc,

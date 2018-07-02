@@ -1,4 +1,4 @@
-AM_CFLAGS = -Wall -pthread \
+AM_CFLAGS = -Wall -pthread -mfp16-format=ieee \
 	    $(X11_CFLAGS) $(PIXMAN_CFLAGS) $(DRM_CFLAGS) $(XV_CFLAGS) \
 	    $(CFLAG_VISIBILITY)
 
@@ -20,10 +20,63 @@ libvdpau_tegra_la_SOURCES = vdpau_tegra.c \
                             host1x-gr2d.c \
                             host1x-pixelbuffer.c \
                             tegra_stream.c \
-                            dri2.c
+                            dri2.c \
+                            shaders/prog.h \
+                            $(shaders_gen) \
+                            tgr_3d.xml.h \
+                            shaders.h \
+                            host1x-gr3d.c \
+                            host1x-gr3d.h
 
 libvdpau_tegra_la_LDFLAGS = -version-info 1:0:0 -module -Wl,-z,defs
 libvdpau_tegra_la_LIBADD  = -lm $(X11_LIBS) $(PIXMAN_LIBS) $(DRM_LIBS) $(XV_LIBS)
 
 pkgconfigdir = ${libdir}/pkgconfig
 pkgconfig_DATA = vdpau-tegra.pc
+
+shaders_dir := $(filter %/, $(wildcard $(srcdir)/shaders/*/))
+shaders_gen := $(addsuffix .bin.h, $(shaders_dir:%/=%))
+
+%.bin.h: gen_shader_bin \
+			%/vertex.asm \
+			%/linker.asm \
+			%/fragment.asm
+	$(builddir)/gen_shader_bin \
+		--vs $*/vertex.asm \
+		--lnk $*/linker.asm \
+		--fs $*/fragment.asm \
+		--name $(*F) \
+		--out $@
+
+asm_grammars := $(wildcard $(srcdir)/asm/*.y)
+asm_headers  := $(wildcard $(srcdir)/asm/*.h)
+asm_lexers   := $(wildcard $(srcdir)/asm/*.l)
+
+asm_gen_c := \
+	$(asm_lexers:%.l=%.lex.c) \
+	$(asm_grammars:%.y=%.tab.c)
+
+asm_gen_h := \
+	$(asm_grammars:%.y=%.tab.h)
+
+%.lex.c: $(asm_lexers)
+	$(LEX) -P $(*F) --nounput -o $@ $*.l
+
+%.tab.c %.tab.h: $(asm_grammars)
+	$(YACC) -p $(*F) -b $(*F) -d --debug -o $@ $*.y
+
+HOSTCC = gcc
+
+gen_shader_bin: gen_shader_bin.c $(asm_gen_c) $(asm_headers)
+	$(HOSTCC) -I $(srcdir)/asm -o $(builddir)/$@ $< $(asm_gen_c)
+
+BUILT_SOURCES = \
+	$(asm_gen_c) \
+	$(asm_gen_h) \
+	$(shaders_gen)
+
+CLEANFILES = \
+	$(asm_gen_c) \
+	$(asm_gen_h) \
+	$(shaders_gen) \
+	$(builddir)/gen_shader_bin

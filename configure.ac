@@ -60,6 +60,17 @@ AC_TYPE_UINT8_T
 # Checks for library functions.
 AC_CHECK_FUNCS([clock_gettime memset munmap])
 
+# Initialize compiler compiler
+AC_PROG_LEX
+if test "$LEX" = :; then
+	AC_MSG_ERROR([flex not found])
+fi
+
+AC_CHECK_PROGS(YACC, 'bison -y' byacc yacc, :)
+if test "$YACC" = :; then
+	AC_MSG_ERROR([bison not found])
+fi
+
 AC_CONFIG_FILES([Makefile
                  src/Makefile
                  src/vdpau-tegra.pc])

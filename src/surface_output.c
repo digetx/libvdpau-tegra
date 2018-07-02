@@ -18,6 +18,7 @@
  */
 
 #include "vdpau_tegra.h"
+#include "shaders/blend_atop.bin.h"
 
 VdpStatus vdp_output_surface_query_capabilities(
                                             VdpDevice device,
@@ -209,6 +210,185 @@ VdpStatus vdp_output_surface_put_bits_y_cb_cr(
     return VDP_STATUS_NO_IMPLEMENTATION;
 }
 
+static int blend_surface(tegra_device *dev,
+                         tegra_surface *src_surf,
+                         tegra_surface *dst_surf,
+                         int16_t src_x0,
+                         int16_t src_y0,
+                         uint32_t src_width,
+                         uint32_t src_height,
+                         int16_t dst_x0,
+                         int16_t dst_y0,
+                         uint32_t dst_width,
+                         uint32_t dst_height,
+                         VdpColor const *colors,
+                         uint32_t flags)
+{
+    struct tegra_stream *stream = &dst_surf->stream_3d;
+    struct drm_tegra_bo *attribs_bo;
+    __fp16 dst_left, dst_right, dst_top, dst_bottom;
+    __fp16 src_left, src_right, src_top, src_bottom;
+    __fp16 c[4][4];
+    __fp16 *map = NULL;
+    unsigned attrib_itr = 0;
+    unsigned i;
+    int err;
+
+    dst_left   = (__fp16) (dst_x0     * 2) / dst_surf->width  - 1.0f;
+    dst_right  = (__fp16) (dst_width  * 2) / dst_surf->width  + dst_left;
+    dst_bottom = (__fp16) (dst_y0     * 2) / dst_surf->height - 1.0f;
+    dst_top    = (__fp16) (dst_height * 2) / dst_surf->height + dst_bottom;
+
+    src_left   = (__fp16) src_x0     / src_surf->width;
+    src_right  = (__fp16) src_width  / src_surf->width + src_left;
+    src_bottom = (__fp16) src_y0     / src_surf->height;
+    src_top    = (__fp16) src_height / src_surf->height + src_bottom;
+
+    if (colors) {
+        if (flags & VDP_OUTPUT_SURFACE_RENDER_COLOR_PER_VERTEX) {
+            for (i = 0; i < 4; i++) {
+                c[i][0] = colors[i].red;
+                c[i][1] = colors[i].green;
+                c[i][2] = colors[i].blue;
+                c[i][3] = colors[i].alpha;
+            }
+        } else {
+            for (i = 0; i < 4; i++) {
+                c[i][0] = colors[0].red;
+                c[i][1] = colors[0].green;
+                c[i][2] = colors[0].blue;
+                c[i][3] = colors[0].alpha;
+            }
+        }
+    } else {
+        for (i = 0; i < 4; i++) {
+            c[i][0] = 1.0f;
+            c[i][1] = 1.0f;
+            c[i][2] = 1.0f;
+            c[i][3] = 1.0f;
+        }
+    }
+
+    err = drm_tegra_bo_new(&attribs_bo, dev->drm, 0, 4096);
+    if (err) {
+        return err;
+    }
+
+    err = drm_tegra_bo_map(attribs_bo, (void**)&map);
+    if (err) {
+        goto out_unref;
+    }
+
+#define TegraPushVtxAttr2(x, y)         \
+    map[attrib_itr++] = x;              \
+    map[attrib_itr++] = y;
+
+#define TegraPushVtxAttr4(x, y, z, w)   \
+    map[attrib_itr++] = x;              \
+    map[attrib_itr++] = y;              \
+    map[attrib_itr++] = z;              \
+    map[attrib_itr++] = w;
+
+    /* push first triangle of the quad to the attributes buffer */
+    TegraPushVtxAttr2(dst_left, dst_bottom);
+    TegraPushVtxAttr4(c[3][0], c[3][1], c[3][2], c[3][3]);
+    TegraPushVtxAttr2(src_left, src_bottom);
+
+    TegraPushVtxAttr2(dst_left, dst_top);
+    TegraPushVtxAttr4(c[0][0], c[0][1], c[0][2], c[0][3]);
+    TegraPushVtxAttr2(src_left, src_top);
+
+    TegraPushVtxAttr2(dst_right, dst_top);
+    TegraPushVtxAttr4(c[1][0], c[1][1], c[1][2], c[1][3]);
+    TegraPushVtxAttr2(src_right, src_top);
+
+    /* push second */
+    TegraPushVtxAttr2(dst_right, dst_top);
+    TegraPushVtxAttr4(c[1][0], c[1][1], c[1][2], c[1][3]);
+    TegraPushVtxAttr2(src_right, src_top);
+
+    TegraPushVtxAttr2(dst_right, dst_bottom);
+    TegraPushVtxAttr4(c[2][0], c[2][1], c[2][2], c[2][3]);
+    TegraPushVtxAttr2(src_right, src_bottom);
+
+    TegraPushVtxAttr2(dst_left, dst_bottom);
+    TegraPushVtxAttr4(c[3][0], c[3][1], c[3][2], c[3][3]);
+    TegraPushVtxAttr2(src_left, src_bottom);
+
+    drm_tegra_bo_unmap(attribs_bo);
+
+    err = tegra_stream_begin(stream);
+    if (err) {
+        goto out_unref;
+    }
+
+    tegra_stream_push_setclass(stream, HOST1X_CLASS_GR3D);
+
+    host1x_gr3d_initialize(stream, &prog_blend_atop);
+
+    host1x_gr3d_setup_scissor(stream, 0, 0, dst_surf->width, dst_surf->height);
+
+    host1x_gr3d_setup_viewport_bias_scale(stream, 0.0f, 0.0f, 0.5f,
+                                          dst_surf->width,
+                                          dst_surf->height, 0.5f);
+
+    host1x_gr3d_setup_render_target(stream, 1,
+                                    dst_surf->bo,
+                                    dst_surf->pixbuf->bo_offset[0],
+                                    TGR3D_PIXEL_FORMAT_RGBA8888,
+                                    dst_surf->pixbuf->pitch);
+
+    host1x_gr3d_enable_render_targets(stream, 1 << 1);
+
+    /* dst position */
+    host1x_gr3d_setup_attribute(stream, 0, attribs_bo,
+                                0, TGR3D_ATTRIB_TYPE_FLOAT16,
+                                2, 16);
+
+    /* colors */
+    host1x_gr3d_setup_attribute(stream, 1, attribs_bo,
+                                4, TGR3D_ATTRIB_TYPE_FLOAT16,
+                                4, 16);
+
+    /* src texcoords */
+    host1x_gr3d_setup_attribute(stream, 2, attribs_bo,
+                                12, TGR3D_ATTRIB_TYPE_FLOAT16,
+                                2, 16);
+
+    host1x_gr3d_setup_texture_desc(stream, 0,
+                                   src_surf->bo,
+                                   src_surf->pixbuf->bo_offset[0],
+                                   src_surf->width,
+                                   src_surf->height,
+                                   TGR3D_PIXEL_FORMAT_RGBA8888,
+                                   false, false, false,
+                                   true, false);
+
+    host1x_gr3d_upload_const_vp(stream, 0, 0.0f, 0.0f, 0.0f, 1.0f);
+
+    host1x_gr3d_setup_draw_params(stream, TGR3D_PRIMITIVE_TYPE_TRIANGLES,
+                                  TGR3D_INDEX_MODE_NONE, 0);
+
+    host1x_gr3d_draw_primitives(stream, 0, 6);
+
+    err = tegra_stream_end(stream);
+    if (err) {
+        goto out_unref;
+    }
+
+    err = tegra_stream_flush(stream);
+    if (err) {
+        goto out_unref;
+    }
+
+    host1x_pixelbuffer_check_guard(dst_surf->pixbuf);
+
+out_unref:
+    drm_tegra_bo_unref(attribs_bo);
+
+    return err;
+}
+
 static VdpStatus surface_render_bitmap_surface(
                             tegra_surface *dst_surf,
                             VdpRect const *destination_rect,
@@ -321,7 +501,7 @@ static VdpStatus surface_render_bitmap_surface(
                                              rot_width, rot_height,
                                              src_surf->rgba_format, 0, 0);
                     if (tmp_surf) {
-                        ret = host1x_gr2d_surface_blit(&tmp_surf->stream,
+                        ret = host1x_gr2d_surface_blit(&tmp_surf->stream_2d,
                                                        shared->video->pixbuf,
                                                        tmp_surf->pixbuf,
                                                        &shared->csc,
@@ -353,7 +533,7 @@ static VdpStatus surface_render_bitmap_surface(
                 tmp_surf = alloc_surface(src_surf->dev, rot_width, rot_height,
                                          src_surf->rgba_format, 0, 0);
                 if (tmp_surf) {
-                    ret = host1x_gr2d_surface_blit(&tmp_surf->stream,
+                    ret = host1x_gr2d_surface_blit(&tmp_surf->stream_2d,
                                                    src_surf->pixbuf,
                                                    tmp_surf->pixbuf,
                                                    &csc_rgb_default,
@@ -427,7 +607,7 @@ out_1:
     }
 
     if (src_surf == NULL) {
-        ret = host1x_gr2d_clear_rect(&dst_surf->stream,
+        ret = host1x_gr2d_clear_rect(&dst_surf->stream_2d,
                                      dst_surf->pixbuf,
                                      clear_color,
                                      dst_x0, dst_y0,
@@ -504,26 +684,50 @@ out_1:
     }
 
     if (!need_rotate || tmp_surf) {
-        if (tmp_surf) {
-            ret = host1x_gr2d_blit(&tmp_surf->stream,
-                                   tmp_surf->pixbuf,
-                                   dst_surf->pixbuf,
-                                   rotate,
-                                   src_x0, src_y0,
-                                   dst_x0, dst_y0,
-                                   rot_width, rot_height);
+        if (blend_state &&
+            blend_state->blend_factor_source_color      == VDP_OUTPUT_SURFACE_RENDER_BLEND_FACTOR_ONE &&
+            blend_state->blend_factor_destination_color == VDP_OUTPUT_SURFACE_RENDER_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA &&
+            blend_state->blend_factor_source_alpha      == VDP_OUTPUT_SURFACE_RENDER_BLEND_FACTOR_ZERO &&
+            blend_state->blend_factor_destination_alpha == VDP_OUTPUT_SURFACE_RENDER_BLEND_FACTOR_ZERO &&
+            blend_state->blend_equation_color           == VDP_OUTPUT_SURFACE_RENDER_BLEND_EQUATION_ADD &&
+            blend_state->blend_equation_alpha           == VDP_OUTPUT_SURFACE_RENDER_BLEND_EQUATION_ADD)
+        {
+            if (tmp_surf) {
+                ret = blend_surface(dst_surf->dev, src_surf, tmp_surf,
+                                    src_x0, src_y0, rot_width, rot_height,
+                                    dst_x0, dst_y0, rot_width, rot_height,
+                                    colors, flags);
 
-            unref_surface(tmp_surf);
+                unref_surface(tmp_surf);
+            } else {
+                ret = blend_surface(dst_surf->dev, src_surf, dst_surf,
+                                    src_x0, src_y0, src_width, src_height,
+                                    dst_x0, dst_y0, dst_width, dst_height,
+                                    colors, flags);
+            }
         } else {
-            ret = host1x_gr2d_surface_blit(&dst_surf->stream,
-                                           src_surf->pixbuf,
-                                           dst_surf->pixbuf,
-                                           &csc_rgb_default,
-                                           src_x0, src_y0,
-                                           src_width, src_height,
-                                           dst_x0, dst_y0,
-                                           dst_width, dst_height);
+            if (tmp_surf) {
+                ret = host1x_gr2d_blit(&tmp_surf->stream_2d,
+                                       tmp_surf->pixbuf,
+                                       dst_surf->pixbuf,
+                                       rotate,
+                                       src_x0, src_y0,
+                                       dst_x0, dst_y0,
+                                       rot_width, rot_height);
+
+                unref_surface(tmp_surf);
+            } else {
+                ret = host1x_gr2d_surface_blit(&dst_surf->stream_2d,
+                                               src_surf->pixbuf,
+                                               dst_surf->pixbuf,
+                                               &csc_rgb_default,
+                                               src_x0, src_y0,
+                                               src_width, src_height,
+                                               dst_x0, dst_y0,
+                                               dst_width, dst_height);
+            }
         }
+
         if (ret) {
             ErrorMsg("surface copying failed %d\n", ret);
         }

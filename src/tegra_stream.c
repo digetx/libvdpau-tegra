@@ -277,3 +277,54 @@ int tegra_stream_end(struct tegra_stream *stream)
 
     return 0;
 }
+
+int tegra_stream_prep(struct tegra_stream *stream, uint32_t words)
+{
+    int ret;
+
+    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
+        ErrorMsg("Stream status isn't CONSTRUCT\n");
+        return -1;
+    }
+
+    ret = drm_tegra_pushbuf_prepare(stream->buffer.pushbuf, words);
+    if (ret != 0) {
+        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
+        ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
+        return -1;
+    }
+
+    return 0;
+}
+
+int tegra_stream_sync(struct tegra_stream *stream,
+                      enum drm_tegra_syncpt_cond cond)
+{
+    int ret;
+
+    if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
+        ErrorMsg("Stream status isn't CONSTRUCT\n");
+        return -1;
+    }
+
+    ret = drm_tegra_pushbuf_sync(stream->buffer.pushbuf, cond);
+    if (ret != 0) {
+        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
+        ErrorMsg("drm_tegra_pushbuf_sync() failed %d\n", ret);
+        return -1;
+    }
+
+    return 0;
+}
+
+int tegra_stream_pushf(struct tegra_stream *stream, float f)
+{
+    union {
+        uint32_t u;
+        float f;
+    } value;
+
+    value.f = f;
+
+    return tegra_stream_push(stream, value.u);
+}

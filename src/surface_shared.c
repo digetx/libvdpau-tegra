@@ -277,7 +277,7 @@ int shared_surface_transfer_video(tegra_surface *disp)
              shared->video->surface_id);
 
     if (disp->set_bg) {
-        ret = host1x_gr2d_clear_rect_clipped(&disp->stream,
+        ret = host1x_gr2d_clear_rect_clipped(&disp->stream_2d,
                                              disp->pixbuf,
                                              disp->bg_color,
                                              0, 0,
@@ -295,7 +295,7 @@ int shared_surface_transfer_video(tegra_surface *disp)
         disp->set_bg = false;
     }
 
-    ret = host1x_gr2d_surface_blit(&disp->stream,
+    ret = host1x_gr2d_surface_blit(&disp->stream_2d,
                                    video->pixbuf,
                                    disp->pixbuf,
                                    &shared->csc,

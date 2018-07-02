@@ -63,7 +63,9 @@
 #include "dri2.h"
 #include "bitstream.h"
 #include "tegra_stream.h"
+#include "shaders/prog.h"
 #include "host1x.h"
+#include "tgr_3d.xml.h"
 #include "util_double_list.h"
 #include "uapi/dma-buf.h"
 #include "uapi/tegra-vde.h"
@@ -92,6 +94,8 @@
 #define FOURCC_PASSTHROUGH_XRGB565  (('1' << 24) + ('B' << 16) + ('G' << 8) + 'R')
 #define FOURCC_PASSTHROUGH_XRGB8888 (('X' << 24) + ('B' << 16) + ('G' << 8) + 'R')
 #define FOURCC_PASSTHROUGH_XBGR8888 (('X' << 24) + ('R' << 16) + ('G' << 8) + 'B')
+
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 #define __align_mask(value, mask)  (((value) + (mask)) & ~(mask))
 #define ALIGN(value, alignment)    __align_mask(value, (typeof(value))((alignment) - 1))
@@ -127,6 +131,7 @@ extern pthread_mutex_t global_lock;
 
 typedef struct tegra_device {
     struct drm_tegra *drm;
+    struct drm_tegra_channel *gr3d;
     struct drm_tegra_channel *gr2d;
     Display *display;
     XvPortID xv_port;
@@ -154,7 +159,8 @@ typedef struct tegra_shared_surface {
 
 typedef struct tegra_surface {
     tegra_device *dev;
-    struct tegra_stream stream;
+    struct tegra_stream stream_3d;
+    struct tegra_stream stream_2d;
 
     bool destroyed;
 

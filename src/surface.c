@@ -526,7 +526,8 @@ tegra_surface *alloc_surface(tegra_device *dev,
         }
     }
 
-    tegra_stream_init(dev->drm, dev->gr2d, &surf->stream, 0);
+    tegra_stream_init(dev->drm, dev->gr3d, &surf->stream_3d, 0);
+    tegra_stream_init(dev->drm, dev->gr2d, &surf->stream_2d, 0);
     ref_device(dev);
 
     return surf;
@@ -591,7 +592,8 @@ VdpStatus unref_surface(tegra_surface *surf)
     DebugMsg("surface %u %p\n", surf->surface_id, surf);
 
     dynamic_release_surface_data(surf);
-    tegra_stream_release(&surf->stream);
+    tegra_stream_release(&surf->stream_3d);
+    tegra_stream_release(&surf->stream_2d);
     unref_device(surf->dev);
 
     set_surface(surf->surface_id, NULL);

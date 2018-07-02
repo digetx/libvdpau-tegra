@@ -17,3 +17,8 @@ ltmain.sh
 missing
 stamp-h1
 m4
+*.tab.h
+*.tab.c
+*.lex.c
+src/shaders/*.bin.h
+src/gen_shader_bin

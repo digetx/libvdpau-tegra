@@ -63,5 +63,9 @@ int tegra_stream_push(struct tegra_stream *stream, uint32_t word);
 int tegra_stream_push_setclass(struct tegra_stream *stream, unsigned class_id);
 int tegra_stream_push_reloc(struct tegra_stream *stream,
                             struct drm_tegra_bo *bo, unsigned offset);
+int tegra_stream_prep(struct tegra_stream *stream, uint32_t words);
+int tegra_stream_sync(struct tegra_stream *stream,
+                      enum drm_tegra_syncpt_cond cond);
+int tegra_stream_pushf(struct tegra_stream *stream, float f);
 
 #endif

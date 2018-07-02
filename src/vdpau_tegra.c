@@ -572,6 +572,7 @@ VdpStatus unref_device(tegra_device *dev)
         XvUngrabPort(dev->display, dev->xv_port, CurrentTime);
     }
 
+    drm_tegra_channel_close(dev->gr3d);
     drm_tegra_channel_close(dev->gr2d);
     drm_tegra_close(dev->drm);
     close(dev->vde_fd);
@@ -669,6 +670,7 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
                                              VdpGetProcAddress **get_proc_address)
 {
     struct drm_tegra *drm = NULL;
+    struct drm_tegra_channel *gr3d = NULL;
     struct drm_tegra_channel *gr2d = NULL;
     VdpDevice i;
     drm_magic_t magic;
@@ -725,9 +727,16 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
         goto err_cleanup;
     }
 
+    ret = drm_tegra_channel_open(&gr3d, drm, DRM_TEGRA_GR3D);
+    if (ret < 0) {
+        ErrorMsg("failed to open 3D channel: %d\n", ret);
+        goto err_cleanup;
+    }
+
     ret = drm_tegra_channel_open(&gr2d, drm, DRM_TEGRA_GR2D);
     if (ret < 0) {
         ErrorMsg("failed to open 2D channel: %d\n", ret);
+        goto err_cleanup;
     }
 
     pthread_mutex_lock(&global_lock);
@@ -764,6 +773,7 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     tegra_devices[i]->screen = screen;
     tegra_devices[i]->vde_fd = vde_fd;
     tegra_devices[i]->drm_fd = drm_fd;
+    tegra_devices[i]->gr3d = gr3d;
     tegra_devices[i]->gr2d = gr2d;
     tegra_devices[i]->drm = drm;
 
@@ -773,6 +783,7 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     return VDP_STATUS_OK;
 
 err_cleanup:
+    drm_tegra_channel_close(gr3d);
     drm_tegra_channel_close(gr2d);
     drm_tegra_close(drm);
     close(drm_fd);
