@@ -642,6 +642,9 @@ VdpStatus vdp_presentation_queue_target_create_x11(
         return VDP_STATUS_RESOURCES;
     }
 
+    /* for some odd reason first X11 events may be dropped, pausing helps */
+    usleep(100000);
+
     pthread_mutexattr_init(&mutex_attrs);
     pthread_mutexattr_settype(&mutex_attrs, PTHREAD_MUTEX_RECURSIVE);
 
