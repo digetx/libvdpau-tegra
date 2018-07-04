@@ -232,13 +232,14 @@ int alloc_surface_data(tegra_surface *surf)
     XvImage *xv_img                     = NULL;
     struct tegra_vde_h264_frame *frame  = NULL;
     struct host1x_pixelbuffer *pixbuf   = NULL;
-    uint32_t stride                     = ALIGN(width * 4, 16);
     uint32_t *bo_flinks                 = NULL;
     uint32_t *pitches                   = NULL;
     int ret;
 
     if (!video) {
         enum pixel_format pixbuf_fmt;
+        unsigned int stride = width * 4;
+        unsigned int alignment = 64;
 
         switch (rgba_format) {
         case VDP_RGBA_FORMAT_R8G8B8A8:
@@ -256,8 +257,13 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
+        /* GR3D texture sampler has specific alignment restrictions. */
+        if (IS_POW2(width) && IS_POW2(height)) {
+            alignment = 16;
+        }
+
         pixbuf = host1x_pixelbuffer_create(dev->drm, width, height,
-                                           stride, 0,
+                                           ALIGN(stride, alignment), 0,
                                            pixbuf_fmt,
                                            PIX_BUF_LAYOUT_LINEAR);
         if (pixbuf == NULL) {

@@ -38,7 +38,6 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
                                                      enum layout_format layout)
 {
     struct host1x_pixelbuffer *pixbuf;
-    unsigned int alignment = 64;
     uint32_t flags = 0;
     uint32_t y_size;
     uint32_t uv_size;
@@ -52,12 +51,6 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
     if (layout == PIX_BUF_LAYOUT_TILED_16x16) {
         pitch = ALIGN(pitch, 256);
         pitch_uv = ALIGN(pitch_uv, 256);
-    } else {
-        /* GR3D texture sampler has specific alignment restrictions. */
-        if (IS_POW2(width) && IS_POW2(height))
-            alignment = 16;
-
-        pitch = ALIGN(pitch, alignment);
     }
 
     if (width * PIX_BUF_FORMAT_BYTES(format) > pitch) {
