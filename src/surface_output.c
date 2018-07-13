@@ -701,7 +701,8 @@ out_1:
     }
 
     if (!need_rotate || tmp_surf) {
-        if (blend_state &&
+        if (src_surf->rgba_format == dst_surf->rgba_format &&
+            blend_state &&
             blend_state->blend_factor_source_color      == VDP_OUTPUT_SURFACE_RENDER_BLEND_FACTOR_ONE &&
             blend_state->blend_factor_destination_color == VDP_OUTPUT_SURFACE_RENDER_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA &&
             blend_state->blend_factor_source_alpha      == VDP_OUTPUT_SURFACE_RENDER_BLEND_FACTOR_ZERO &&
