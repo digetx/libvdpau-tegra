@@ -229,6 +229,7 @@ static int blend_surface(tegra_device *dev,
     __fp16 dst_left, dst_right, dst_top, dst_bottom;
     __fp16 src_left, src_right, src_top, src_bottom;
     __fp16 c[4][4];
+    __fp16 tmp;
     __fp16 *map = NULL;
     unsigned attrib_itr = 0;
     unsigned i;
@@ -267,6 +268,22 @@ static int blend_surface(tegra_device *dev,
             c[i][2] = 1.0f;
             c[i][3] = 1.0f;
         }
+    }
+
+    switch (src_surf->rgba_format) {
+    case VDP_RGBA_FORMAT_B8G8R8A8:
+        for (i = 0; i < 4; i++) {
+            tmp = c[i][0];
+            c[i][0] = c[i][2];
+            c[i][2] = tmp;
+        }
+        break;
+
+    case VDP_RGBA_FORMAT_R8G8B8A8:
+        break;
+
+    default:
+        return -EINVAL;
     }
 
     err = drm_tegra_bo_new(&attribs_bo, dev->drm, 0, 4096);
