@@ -613,7 +613,12 @@ VdpStatus vdp_video_mixer_render(
     }
 
     if (!draw_background) {
-        if (tegra_vdpau_force_dri || !mix->custom_csc) {
+        float w_ratio = (float) src_vid_width / dst_vid_width;
+        float h_ratio = (float) src_vid_height / dst_vid_height;
+
+        if ((tegra_vdpau_force_dri || !mix->custom_csc) &&
+            ((w_ratio < 5.0f) && (h_ratio < 15.0f)))
+        {
             shared = create_shared_surface(dest_surf,
                                            video_surf,
                                            &mix->csc,
