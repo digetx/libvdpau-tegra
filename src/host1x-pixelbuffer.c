@@ -48,10 +48,12 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
     if (!pixbuf)
         return NULL;
 
-    if (layout == PIX_BUF_LAYOUT_TILED_16x16) {
-        pitch = ALIGN(pitch, 256);
-        pitch_uv = ALIGN(pitch_uv, 256);
-    }
+    pixbuf->pitch = ALIGN(pitch, 16);
+    pixbuf->pitch_uv = ALIGN(pitch_uv, 16);
+    pixbuf->width = width;
+    pixbuf->height = height;
+    pixbuf->format = format;
+    pixbuf->layout = layout;
 
     if (width * PIX_BUF_FORMAT_BYTES(format) > pitch) {
         host1x_error("Invalid pitch\n");
@@ -64,13 +66,6 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
             goto error_cleanup;
         }
     }
-
-    pixbuf->pitch = pitch;
-    pixbuf->pitch_uv = pitch_uv;
-    pixbuf->width = width;
-    pixbuf->height = height;
-    pixbuf->format = format;
-    pixbuf->layout = layout;
 
     if (layout == PIX_BUF_LAYOUT_TILED_16x16)
         height = ALIGN(height, 16);

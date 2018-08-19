@@ -578,12 +578,18 @@ coords_check:
         tegra_stream_push(stream, csc->cyx << 24 | csc->cur << 12 | csc->cug); /* cscsecond */
         tegra_stream_push(stream, csc->cvb << 16 | csc->cvg); /* cscthird */
     } else {
+        /* tile mode */
+        tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x04b, 3));
+        tegra_stream_push_reloc(stream, src->bos[2], src->bo_offset[2]); /* vba */
+        tegra_stream_push_reloc(stream, src->bos[1], src->bo_offset[1]); /* uba */
+
         tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x15, 0x7E7));
 
         tegra_stream_push(stream, csc->yos << 24 | csc->cvr << 12 | csc->cub); /* cscfirst */
         tegra_stream_push(stream, csc->cyx << 24 | csc->cur << 12 | csc->cug); /* cscsecond */
         tegra_stream_push(stream, csc->cvb << 16 | csc->cvg); /* cscthird */
 
+        /* linear mode */
         tegra_stream_push_reloc(stream, src->bos[1], src->bo_offset[1]); /* uba */
         tegra_stream_push_reloc(stream, src->bos[2], src->bo_offset[2]); /* vba */
     }
@@ -607,9 +613,10 @@ coords_check:
     tegra_stream_push(stream, src->pitch_uv); /* uvstride */
     /*
      * [20:20] destination write tile mode (0: linear, 1: tiled)
+     * [ 4: 4] tile mode UV (0: linear, 1: tiled)
      * [ 0: 0] tile mode Y/RGB (0: linear, 1: tiled)
      */
-    tegra_stream_push(stream, dst_tiled << 20 | src_tiled); /* tilemode */
+    tegra_stream_push(stream, dst_tiled << 20 | src_tiled << 4 | src_tiled); /* tilemode */
     tegra_stream_push_reloc(stream, src->bo, /* srcba_sb_surfbase */
                             sb_offset(src, sx, sy));
     tegra_stream_push_reloc(stream, dst->bo, /* dstba_sb_surfbase */
