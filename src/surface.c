@@ -234,6 +234,7 @@ int alloc_surface_data(tegra_surface *surf)
     struct host1x_pixelbuffer *pixbuf   = NULL;
     uint32_t *bo_flinks                 = NULL;
     uint32_t *pitches                   = NULL;
+    uint32_t size;
     int ret;
 
     if (!video) {
@@ -333,8 +334,9 @@ int alloc_surface_data(tegra_surface *surf)
 
         /* aux stuff */
 
-        ret = drm_tegra_bo_new(&surf->aux_bo, dev->drm, 0,
-                               ALIGN(width, 16) * ALIGN(height, 16) / 4);
+        size = ALIGN(width, 32) * ALIGN(height, 16) / 4;
+
+        ret = drm_tegra_bo_new(&surf->aux_bo, dev->drm, 0, ALIGN(size, 256));
         if (ret) {
             ErrorMsg("drm_tegra_bo_new failed %d (%s)\n",
                      ret, strerror(-ret));

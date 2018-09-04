@@ -83,7 +83,7 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
         bo_size = ALIGN(y_size, 0xFF);
         bo_size = ALIGN(bo_size + uv_size, 0xFF ) + uv_size;
     } else {
-        bo_size = pitch * height;
+        bo_size = ALIGN(pitch * height, 256);
 
         if (!pixbuf_guard_disabled) {
             pixbuf->guard_offset[0] = bo_size;
@@ -101,7 +101,7 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
     }
 
     if (!UNIFIED_BUFFER && format == PIX_BUF_FMT_YV12) {
-        bo_size = uv_size;
+        bo_size = ALIGN(uv_size, 256);
 
         if (!pixbuf_guard_disabled) {
             pixbuf->guard_offset[1] = bo_size;
