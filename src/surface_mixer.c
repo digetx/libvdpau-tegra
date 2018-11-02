@@ -490,7 +490,7 @@ VdpStatus vdp_video_mixer_render(
     if (video_source_rect != NULL) {
         src_vid_width = video_source_rect->x1 - video_source_rect->x0;
         src_vid_height = video_source_rect->y1 - video_source_rect->y0;
-        src_vid_x0 = video_source_rect->x0;
+        src_vid_x0 = video_source_rect->x0 & ~1; /* YUV offsets should be aligned to 2 on Tegra */
         src_vid_y0 = video_source_rect->y0;
     } else {
         src_vid_width = video_surf->width;

@@ -204,15 +204,25 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
 }
 
 static uint32_t sb_offset(struct host1x_pixelbuffer *pixbuf,
-                          uint32_t xpos, uint32_t ypos)
+                          uint32_t xpos, uint32_t ypos, bool uv)
 {
     uint32_t offset;
     uint32_t bytes_per_pixel = PIX_BUF_FORMAT_BYTES(pixbuf->format);
     uint32_t pixels_per_line = pixbuf->pitch / bytes_per_pixel;
     uint32_t xb;
 
+    /* XXX: RGB may need alignment too */
+    if (pixbuf->format == PIX_BUF_FMT_YV12) {
+        xpos &= ~1;
+
+        if (uv) {
+            xpos /= 2;
+            ypos /= 2;
+        }
+    }
+
     if (pixbuf->layout == PIX_BUF_LAYOUT_LINEAR) {
-        offset = ypos * pixbuf->pitch;
+        offset = ypos * (uv ? pixbuf->pitch_uv : pixbuf->pitch);
         offset += xpos * bytes_per_pixel;
     } else {
         xb = xpos * bytes_per_pixel;
@@ -329,8 +339,8 @@ int host1x_gr2d_blit(struct tegra_stream *stream,
     case ROT_180:
         src_width = width - 1;
         src_height = height - 1;
-        src_offset = sb_offset(src, sx, sy);
-        dst_offset = sb_offset(dst, dx, dy);
+        src_offset = sb_offset(src, sx, sy, false);
+        dst_offset = sb_offset(dst, dx, dy, false);
         break;
 
     default:
@@ -580,8 +590,10 @@ coords_check:
     } else {
         /* tile mode */
         tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x04b, 3));
-        tegra_stream_push_reloc(stream, src->bos[2], src->bo_offset[2]); /* vba */
-        tegra_stream_push_reloc(stream, src->bos[1], src->bo_offset[1]); /* uba */
+        tegra_stream_push_reloc(stream, src->bos[2], /* vba */
+                                src->bo_offset[2] + sb_offset(src, sx, sy, true));
+        tegra_stream_push_reloc(stream, src->bos[1], /* uba */
+                                src->bo_offset[1] + sb_offset(src, sx, sy, true));
 
         tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x15, 0x7E7));
 
@@ -590,8 +602,10 @@ coords_check:
         tegra_stream_push(stream, csc->cvb << 16 | csc->cvg); /* cscthird */
 
         /* linear mode */
-        tegra_stream_push_reloc(stream, src->bos[1], src->bo_offset[1]); /* uba */
-        tegra_stream_push_reloc(stream, src->bos[2], src->bo_offset[2]); /* vba */
+        tegra_stream_push_reloc(stream, src->bos[1], /* uba */
+                                src->bo_offset[1] + sb_offset(src, sx, sy, true));
+        tegra_stream_push_reloc(stream, src->bos[2], /* vba */
+                                src->bo_offset[2] + sb_offset(src, sx, sy, true));
     }
 
     tegra_stream_push(stream, dst_fmt << 8 | src_fmt); /* sbformat */
@@ -618,18 +632,18 @@ coords_check:
      */
     tegra_stream_push(stream, dst_tiled << 20 | src_tiled << 4 | src_tiled); /* tilemode */
     tegra_stream_push_reloc(stream, src->bo, /* srcba_sb_surfbase */
-                            sb_offset(src, sx, sy));
+                            sb_offset(src, sx, sy, false));
     tegra_stream_push_reloc(stream, dst->bo, /* dstba_sb_surfbase */
-                            sb_offset(dst, dx, dy) +
+                            sb_offset(dst, dx, dy, false) +
                                 yflip * dst->pitch * (dst_height - 1));
 
     tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x02b, 0x3149));
     tegra_stream_push_reloc(stream, dst->bo, /* dstba */
-                            sb_offset(dst, dx, dy) +
+                            sb_offset(dst, dx, dy, false) +
                                 yflip * dst->pitch * (dst_height - 1));
     tegra_stream_push(stream, dst->pitch); /* dstst */
     tegra_stream_push_reloc(stream, src->bo, /* srcba */
-                            sb_offset(src, sx, sy));
+                            sb_offset(src, sx, sy, false));
     tegra_stream_push(stream, src->pitch); /* srcst */
     tegra_stream_push(stream, (src_height - 1) << 16 | src_width); /* srcsize */
     tegra_stream_push(stream, (dst_height - 1) << 16 | dst_width); /* dstsize */
