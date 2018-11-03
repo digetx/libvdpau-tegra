@@ -38,6 +38,7 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
                                                      enum layout_format layout)
 {
     struct host1x_pixelbuffer *pixbuf;
+    bool tiled;
     uint32_t flags = 0;
     uint32_t y_size;
     uint32_t uv_size;
@@ -68,10 +69,15 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
     }
 
     if (layout == PIX_BUF_LAYOUT_TILED_16x16)
+        tiled = true;
+    else
+        tiled = false;
+
+    if (tiled)
         height = ALIGN(height, 16);
 
     y_size = pitch * height;
-    uv_size = pitch_uv * height / 2;
+    uv_size = pitch_uv * ALIGN(height / 2, tiled ? 16 : 1);
 
     if (UNIFIED_BUFFER && format == PIX_BUF_FMT_YV12) {
         if (!pixbuf_guard_disabled) {
@@ -126,7 +132,7 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
     }
 
     if (UNIFIED_BUFFER && format == PIX_BUF_FMT_YV12) {
-        bo_size = pitch_uv * height / 2;
+        bo_size = pitch_uv * ALIGN(height / 2, tiled ? 16 : 1);
 
         pixbuf->bos[1] = drm_tegra_bo_ref(pixbuf->bo);
         pixbuf->bo_offset[1] = ALIGN(y_size, 0xFF);
