@@ -490,8 +490,16 @@ VdpStatus vdp_video_mixer_render(
     if (video_source_rect != NULL) {
         src_vid_width = video_source_rect->x1 - video_source_rect->x0;
         src_vid_height = video_source_rect->y1 - video_source_rect->y0;
-        src_vid_x0 = video_source_rect->x0 & ~1; /* YUV offsets should be aligned to 2 on Tegra */
-        src_vid_y0 = video_source_rect->y0;
+
+        if (video_surf->pixbuf->layout == PIX_BUF_LAYOUT_LINEAR) {
+            /* linear YUV offsets should be aligned to 2 on Tegra */
+            src_vid_x0 = video_source_rect->x0 & ~1;
+            src_vid_y0 = video_source_rect->y0;
+        } else {
+            /* tiled YUV offsets should be aligned to 32 on Tegra */
+            src_vid_x0 = video_source_rect->x0 & ~31;
+            src_vid_y0 = video_source_rect->y0 & ~31;
+        }
     } else {
         src_vid_width = video_surf->width;
         src_vid_height = video_surf->height;

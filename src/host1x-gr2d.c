@@ -208,28 +208,31 @@ static uint32_t sb_offset(struct host1x_pixelbuffer *pixbuf,
 {
     uint32_t offset;
     uint32_t bytes_per_pixel = PIX_BUF_FORMAT_BYTES(pixbuf->format);
-    uint32_t pixels_per_line = pixbuf->pitch / bytes_per_pixel;
-    uint32_t xb;
+    uint32_t pitch = pixbuf->pitch;
 
     /* XXX: RGB may need alignment too */
     if (pixbuf->format == PIX_BUF_FMT_YV12) {
-        xpos &= ~1;
+
+        if (pixbuf->layout == PIX_BUF_LAYOUT_LINEAR) {
+            xpos &= ~1;
+        } else {
+            xpos &= ~31;
+            ypos &= ~31;
+        }
 
         if (uv) {
+            pitch = pixbuf->pitch_uv;
             xpos /= 2;
             ypos /= 2;
         }
     }
 
     if (pixbuf->layout == PIX_BUF_LAYOUT_LINEAR) {
-        offset = ypos * (uv ? pixbuf->pitch_uv : pixbuf->pitch);
+        offset = ypos * pitch;
         offset += xpos * bytes_per_pixel;
     } else {
-        xb = xpos * bytes_per_pixel;
-        offset = 16 * pixels_per_line * (ypos / 16);
-        offset += 256 * (xb / 16);
-        offset += 16 * (ypos % 16);
-        offset += xb % 16;
+        offset = xpos / 16 * (256 * bytes_per_pixel);
+        offset += ypos / 16 * (256 * bytes_per_pixel) * pitch / 16;
     }
 
     return offset;
