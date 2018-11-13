@@ -440,7 +440,7 @@ int host1x_gr2d_surface_blit(struct tegra_stream *stream,
                              struct host1x_pixelbuffer *dst,
                              struct host1x_csc_params *csc,
                              unsigned int sx, unsigned int sy,
-                             unsigned int src_width, unsigned int src_height,
+                             unsigned int src_width, int src_height,
                              unsigned int dx, unsigned int dy,
                              unsigned int dst_width, int dst_height)
 {
@@ -543,8 +543,8 @@ coords_check:
         return -EINVAL;
     }
 
-    inv_scale_x = (src_width) / (float)(dst_width);
-    inv_scale_y = (src_height) / (float)(dst_height);
+    inv_scale_x = (src_width - 1) / (float)(dst_width - 1);
+    inv_scale_y = (src_height - 1) / (float)(dst_height - 1);
 
     if (inv_scale_y > 64.0f || inv_scale_y < 1.0f / 4096.0f) {
         host1x_error("Unsupported Y scale\n");
@@ -564,10 +564,19 @@ coords_check:
     if (inv_scale_y == 1.0f) {
         vftype = 0;
         vfen = 0;
+
+        src_height -= 1;
+        dst_height -= 1;
     } else {
         vftype = 0;
         vfen = 1;
+
+        src_height -= 2;
+        dst_height -= 2;
     }
+
+    src_height = max(src_height, 0);
+    dst_height = max(dst_height, 0);
 
     err = tegra_stream_begin(stream);
     if (err)
@@ -638,18 +647,18 @@ coords_check:
                             sb_offset(src, sx, sy, false));
     tegra_stream_push_reloc(stream, dst->bo, /* dstba_sb_surfbase */
                             sb_offset(dst, dx, dy, false) +
-                                yflip * dst->pitch * (dst_height - 1));
+                                yflip * dst->pitch * dst_height);
 
     tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x02b, 0x3149));
     tegra_stream_push_reloc(stream, dst->bo, /* dstba */
                             sb_offset(dst, dx, dy, false) +
-                                yflip * dst->pitch * (dst_height - 1));
+                                yflip * dst->pitch * dst_height);
     tegra_stream_push(stream, dst->pitch); /* dstst */
     tegra_stream_push_reloc(stream, src->bo, /* srcba */
                             sb_offset(src, sx, sy, false));
     tegra_stream_push(stream, src->pitch); /* srcst */
-    tegra_stream_push(stream, (src_height - 1) << 16 | src_width); /* srcsize */
-    tegra_stream_push(stream, (dst_height - 1) << 16 | dst_width); /* dstsize */
+    tegra_stream_push(stream, src_height << 16 | src_width); /* srcsize */
+    tegra_stream_push(stream, dst_height << 16 | dst_width); /* dstsize */
 
     err = tegra_stream_end(stream);
     if (err)

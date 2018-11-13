@@ -193,7 +193,7 @@ int host1x_gr2d_surface_blit(struct tegra_stream *stream,
                              struct host1x_pixelbuffer *dst,
                              struct host1x_csc_params *csc,
                              unsigned int sx, unsigned int sy,
-                             unsigned int src_width, unsigned int src_height,
+                             unsigned int src_width, int src_height,
                              unsigned int dx, unsigned int dy,
                              unsigned int dst_width, int dst_height);
 
