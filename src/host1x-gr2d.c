@@ -543,8 +543,8 @@ coords_check:
         return -EINVAL;
     }
 
-    inv_scale_x = (src_width - 1) / (float)(dst_width - 1);
-    inv_scale_y = (src_height - 1) / (float)(dst_height - 1);
+    inv_scale_x = max(src_width - 1, 1) / (float)(dst_width - 1);
+    inv_scale_y = max(src_height - 1, 1) / (float)(dst_height - 1);
 
     if (inv_scale_y > 64.0f || inv_scale_y < 1.0f / 4096.0f) {
         host1x_error("Unsupported Y scale\n");
