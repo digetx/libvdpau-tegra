@@ -75,6 +75,8 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
 
     if (tiled)
         height = ALIGN(height, 16);
+    else
+        height = ALIGN(height, 4);
 
     y_size = pitch * height;
     uv_size = pitch_uv * ALIGN(height / 2, tiled ? 16 : 1);
