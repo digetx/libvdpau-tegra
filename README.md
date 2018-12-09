@@ -23,14 +23,6 @@ Usage of the most recent mainline upstream Linux kernel is very recommended, not
 
 # Installation:
 
-### From sources
-
-```
-$ sh autogen.sh --prefix=/
-$ make
-$ make install
-```
-
 ### Ubuntu
 
 ```
@@ -49,6 +41,16 @@ sudo emerge libvdpau-tegra-driver
 ### Arch Linux
 
 There is PKGBUILD in https://aur.archlinux.org/packages/libvdpau-tegra-git/.
+
+### From sources
+
+```
+git clone https://github.com/grate-driver/libvdpau-tegra.git
+cd libvdpau-tegra
+sh autogen.sh --prefix=/
+make
+sudo make install
+```
 
 # Usage example:
 
