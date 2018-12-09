@@ -33,11 +33,22 @@ $ make install
 
 ### Ubuntu
 
-Add this PPA https://launchpad.net/~grate-driver/+archive/ubuntu/ppa and `apt-get install libvdpau-tegra`.
+```
+sudo add-apt-repository ppa:grate-driver/ppa
+sudo apt-get update
+sudo apt-get install libvdpau-tegra
+```
 
 ### Gentoo
 
-Add this overlay https://github.com/grate-driver/grate-overlay and `emerge libvdpau-tegra-driver`.
+```
+sudo layman -f -o https://raw.githubusercontent.com/grate-driver/grate-overlay/master/overlay.xml -a grate-overlay
+sudo emerge libvdpau-tegra-driver
+```
+
+### Arch Linux
+
+There is PKGBUILD in https://aur.archlinux.org/packages/libvdpau-tegra-git/.
 
 # Usage example:
 
