@@ -27,6 +27,7 @@ static XvImage * create_video_xv(tegra_surface *video)
     uint32_t *bo_flinks;
     uint32_t *pitches;
     uint32_t *offsets;
+    uint32_t fourcc;
 
     if (tegra_vdpau_force_dri) {
         return NULL;
@@ -36,9 +37,14 @@ static XvImage * create_video_xv(tegra_surface *video)
         return NULL;
     }
 
+    if (video->dev->xv_v2) {
+        fourcc = FOURCC_PASSTHROUGH_YV12_V2;
+    } else {
+        fourcc = FOURCC_PASSTHROUGH_YV12;
+    }
+
     xv_img = XvCreateImage(video->dev->display, video->dev->xv_port,
-                           FOURCC_PASSTHROUGH_YV12, NULL,
-                           video->width, video->height);
+                           fourcc, NULL, video->width, video->height);
     if (!xv_img) {
         return NULL;
     }
@@ -50,9 +56,15 @@ static XvImage * create_video_xv(tegra_surface *video)
         return NULL;
     }
 
-    bo_flinks = (uint32_t*) (xv_img->data + 0);
-    pitches = (uint32_t*) (xv_img->data + 12);
-    offsets = (uint32_t*) (xv_img->data + 24);
+    if (video->dev->xv_v2) {
+        bo_flinks = (uint32_t*) (xv_img->data + 0);
+        pitches   = (uint32_t*) (xv_img->data + 16);
+        offsets   = (uint32_t*) (xv_img->data + 32);
+    } else {
+        bo_flinks = (uint32_t*) (xv_img->data + 0);
+        pitches   = (uint32_t*) (xv_img->data + 12);
+        offsets   = (uint32_t*) (xv_img->data + 24);
+    }
 
     drm_tegra_bo_get_name(video->y_bo, &bo_flinks[0]);
     drm_tegra_bo_get_name(video->cb_bo, &bo_flinks[1]);

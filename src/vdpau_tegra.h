@@ -95,6 +95,13 @@
 #define FOURCC_PASSTHROUGH_XRGB8888 (('X' << 24) + ('B' << 16) + ('G' << 8) + 'R')
 #define FOURCC_PASSTHROUGH_XBGR8888 (('X' << 24) + ('R' << 16) + ('G' << 8) + 'B')
 
+#define PASSTHROUGH_DATA_SIZE_V2 128
+
+#define FOURCC_PASSTHROUGH_YV12_V2     (('T' << 24) + ('G' << 16) + ('R' << 8) + '1')
+#define FOURCC_PASSTHROUGH_RGB565_V2   (('T' << 24) + ('G' << 16) + ('R' << 8) + '2')
+#define FOURCC_PASSTHROUGH_XRGB8888_V2 (('T' << 24) + ('G' << 16) + ('R' << 8) + '3')
+#define FOURCC_PASSTHROUGH_XBGR8888_V2 (('T' << 24) + ('G' << 16) + ('R' << 8) + '4')
+
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 #define __align_mask(value, mask)  (((value) + (mask)) & ~(mask))
@@ -115,6 +122,15 @@ do { \
     (((_v) < (_vmin) ? (_vmin) : (((_v) > (_vmax)) ? (_vmax) : (_v))))
 
 #define UNIFIED_BUFFER  0
+
+typedef union TegraXvVdpauInfo {
+    struct {
+        unsigned int visible : 1;
+        unsigned int crtc_pipe : 1;
+    };
+
+    uint32_t data;
+} TegraXvVdpauInfo;
 
 extern bool tegra_vdpau_debug;
 extern bool tegra_vdpau_force_xv;
@@ -140,9 +156,12 @@ typedef struct tegra_device {
     bool dri2_inited;
     bool dri2_ready;
     bool xv_ready;
+    bool xv_v2;
     int screen;
     int vde_fd;
     int drm_fd;
+
+    Atom xvVdpauInfo;
 } tegra_device;
 
 struct tegra_surface;
@@ -359,6 +378,8 @@ tegra_surface * shared_surface_swap_video(tegra_surface *old);
 int shared_surface_transfer_video(tegra_surface *disp);
 void shared_surface_kill_disp(tegra_surface *disp);
 tegra_shared_surface * shared_surface_get(tegra_surface *disp);
+
+bool tegra_check_xv_atom(tegra_device *dev, char const *atom_name);
 
 VdpTime get_time(void);
 

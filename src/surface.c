@@ -357,11 +357,13 @@ int alloc_surface_data(tegra_surface *surf)
 
         switch (rgba_format) {
         case VDP_RGBA_FORMAT_R8G8B8A8:
-            format_id = FOURCC_PASSTHROUGH_XBGR8888;
+            format_id = dev->xv_v2 ? FOURCC_PASSTHROUGH_XBGR8888_V2 :
+                                     FOURCC_PASSTHROUGH_XBGR8888;
             break;
 
         case VDP_RGBA_FORMAT_B8G8R8A8:
-            format_id = FOURCC_PASSTHROUGH_XRGB8888;
+            format_id = dev->xv_v2 ? FOURCC_PASSTHROUGH_XRGB8888_V2 :
+                                     FOURCC_PASSTHROUGH_XRGB8888;
             break;
 
         default:
@@ -382,7 +384,11 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
-        assert(xv_img->data_size == PASSTHROUGH_DATA_SIZE);
+        if (dev->xv_v2) {
+            assert(xv_img->data_size == PASSTHROUGH_DATA_SIZE_V2);
+        } else {
+            assert(xv_img->data_size == PASSTHROUGH_DATA_SIZE);
+        }
 
         xv_img->data = calloc(1, xv_img->data_size);
 
@@ -400,7 +406,11 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
-        pitches = (uint32_t *) (xv_img->data + 12);
+        if (dev->xv_v2) {
+            pitches = (uint32_t *) (xv_img->data + 16);
+        } else {
+            pitches = (uint32_t *) (xv_img->data + 12);
+        }
 
         pitches[0] = pixbuf->pitch;
     }

@@ -194,9 +194,29 @@ static void pqt_display_dri(tegra_pqt *pqt, tegra_surface *surf)
     }
 }
 
-static void pqt_display_xv(tegra_pqt *pqt, tegra_surface *surf)
+static void wait_for_vblank(tegra_device *dev, int secondary)
+{
+    drmVBlank vbl;
+    int err;
+
+    memset(&vbl, 0, sizeof(vbl));
+    vbl.request.type = DRM_VBLANK_RELATIVE;
+    vbl.request.sequence = 1;
+    vbl.request.signal = 0;
+
+    if (secondary)
+        vbl.request.type |= DRM_VBLANK_SECONDARY;
+
+    err = drmWaitVBlank(dev->drm_fd, &vbl);
+    if (err) {
+        DebugMsg("drmWaitVBlank() failed: %d\n", err);
+    }
+}
+
+static void pqt_display_xv(tegra_pqt *pqt, tegra_surface *surf, bool block)
 {
     tegra_device *dev = pqt->dev;
+    bool no_surf = false;
 
     if (surf->set_bg && surf->bg_color != pqt->bg_color) {
         XSetWindowBackground(dev->display, pqt->drawable, surf->bg_color);
@@ -235,9 +255,39 @@ static void pqt_display_xv(tegra_pqt *pqt, tegra_surface *surf)
                    surf->disp_height);
     } else {
         DebugMsg("surface %u is absent\n", surf->surface_id);
+        no_surf = true;
+    }
+
+    if (no_surf) {
+        return;
     }
 
     XSync(dev->display, 0);
+
+    if (dev->xv_v2 && block) {
+        TegraXvVdpauInfo vdpau_info = { 0 };
+        VdpTime time = 0;
+        int32_t val;
+        int ret;
+
+        ret = XvGetPortAttribute(dev->display, dev->xv_port, dev->xvVdpauInfo,
+                                 &val);
+        if (ret != Success || !val) {
+            DebugMsg("failed to get XV_TEGRA_VDPAU_INFO %d val %d\n", ret, val);
+        } else {
+            vdpau_info.data = val;
+        }
+
+        DebugMsg("vdpau_info.visible %u vdpau_info.crtc_pipe %u\n",
+                 vdpau_info.visible, vdpau_info.crtc_pipe);
+
+        if (tegra_vdpau_debug)
+            time = get_time();
+
+        wait_for_vblank(dev, vdpau_info.crtc_pipe);
+
+        DebugMsg("waited for VBLANK %llu usec\n", (get_time() - time) / 1000);
+    }
 }
 
 static void transit_display_to_xv(tegra_pqt *pqt)
@@ -410,7 +460,7 @@ void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf,
             transit_display_to_dri(pqt);
         }
     } else {
-        pqt_display_xv(pqt, surf);
+        pqt_display_xv(pqt, surf, update_status);
 
         if (transit || pqt->disp_state != TEGRA_PQT_XV) {
             transit_display_to_xv(pqt);

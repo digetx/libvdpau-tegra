@@ -24,6 +24,7 @@ pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;
 bool tegra_vdpau_debug;
 bool tegra_vdpau_force_xv;
 bool tegra_vdpau_force_dri;
+bool tegra_vdpau_force_xv_v1;
 
 static tegra_device  * tegra_devices[MAX_DEVICES_NB];
 static tegra_decoder * tegra_decoders[MAX_DECODERS_NB];
@@ -43,6 +44,28 @@ VdpCSCMatrix CSC_BT_709 = {
     { 1.164384f,-0.213249f,-0.532909f },
     { 1.164384f, 2.112402f, 0.000000f },
 };
+
+bool tegra_check_xv_atom(tegra_device *dev, char const *atom_name)
+{
+    XvAttribute *attributes;
+    int count = 0, i;
+
+    attributes = XvQueryPortAttributes(dev->display, dev->xv_port, &count);
+    if (attributes == NULL || !count)
+        return false;
+
+    for (i = 0; i < count; i++) {
+        DebugMsg("attributes[%d].name = %s %s\n",
+                 i, attributes[i].name, atom_name);
+
+        if (strcmp(attributes[i].name, atom_name) == 0)
+            break;
+    }
+
+    XFree(attributes);
+
+    return i < count;
+}
 
 VdpTime get_time(void)
 {
@@ -602,6 +625,9 @@ static int initialize_xv(Display *display, tegra_device *dev)
     XvImageFormatValues *fmt;
     unsigned int ver, rel, req, ev, err;
     unsigned int num_adaptors;
+    unsigned int adaptor = 0;
+    bool detected_v2 = false;
+    bool detected = false;
     int num_formats;
     int ret;
 
@@ -630,27 +656,47 @@ static int initialize_xv(Display *display, tegra_device *dev)
         while (num_formats--) {
             if (!strncmp(fmt[num_formats].guid, "PASSTHROUGH_YV12", 16) &&
                     fmt[num_formats].id == FOURCC_PASSTHROUGH_YV12) {
-                XFree(fmt);
-                goto xv_detected;
+                detected = true;
+                adaptor = num_adaptors;
+                DebugMsg("detected Xv\n");
+            }
+
+            if (!strncmp(fmt[num_formats].guid, "PASSTHROUGH_TGR1", 16) &&
+                    fmt[num_formats].id == FOURCC_PASSTHROUGH_YV12_V2) {
+                detected_v2 = true;
+                DebugMsg("detected Xv V2\n");
             }
         }
 
         XFree(fmt);
     }
 
-    ErrorMsg("Opentegra Xv undetected\n");
+    if (!detected) {
+        ErrorMsg("Opentegra Xv undetected\n");
+        ret = !Success;
+        goto err_cleanup;
+    }
 
-    goto err_cleanup;
-
-xv_detected:
-    ret = XvGrabPort(display, adaptor_info[num_adaptors].base_id, CurrentTime);
+    ret = XvGrabPort(display, adaptor_info[adaptor].base_id, CurrentTime);
     if (ret != Success) {
         ErrorMsg("Xv port is busy\n");
         goto err_cleanup;
     }
 
-    dev->xv_port = adaptor_info[num_adaptors].base_id;
+    dev->xv_port = adaptor_info[adaptor].base_id;
     dev->xv_ready = true;
+
+    if (detected_v2) {
+        if (tegra_check_xv_atom(dev, "XV_TEGRA_VDPAU_INFO")) {
+            dev->xvVdpauInfo = XInternAtom(display, "XV_TEGRA_VDPAU_INFO",
+                                           false);
+        } else {
+            ErrorMsg("failed to get XV_TEGRA_VDPAU_INFO atom\n");
+            detected_v2 = false;
+        }
+    }
+
+    dev->xv_v2 = detected_v2 && !tegra_vdpau_force_xv_v1;
 
 err_cleanup:
     if (adaptor_info) {
@@ -688,6 +734,11 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     debug_str = getenv("VDPAU_TEGRA_FORCE_XV");
     if (debug_str && strcmp(debug_str, "0")) {
         tegra_vdpau_force_xv = true;
+    }
+
+    debug_str = getenv("VDPAU_TEGRA_FORCE_XV_V1");
+    if (debug_str && strcmp(debug_str, "0")) {
+        tegra_vdpau_force_xv_v1 = true;
     }
 
     debug_str = getenv("VDPAU_TEGRA_FORCE_DRI");
@@ -756,6 +807,14 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
 
     atomic_set(&tegra_devices[i]->refcnt, 1);
 
+    tegra_devices[i]->display = display;
+    tegra_devices[i]->screen = screen;
+    tegra_devices[i]->vde_fd = vde_fd;
+    tegra_devices[i]->drm_fd = drm_fd;
+    tegra_devices[i]->gr3d = gr3d;
+    tegra_devices[i]->gr2d = gr2d;
+    tegra_devices[i]->drm = drm;
+
     if (initialize_xv(display, tegra_devices[i]) != Success) {
         if (dri_failed) {
             free(tegra_devices[i]);
@@ -768,14 +827,6 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
             tegra_vdpau_force_dri = true;
         }
     }
-
-    tegra_devices[i]->display = display;
-    tegra_devices[i]->screen = screen;
-    tegra_devices[i]->vde_fd = vde_fd;
-    tegra_devices[i]->drm_fd = drm_fd;
-    tegra_devices[i]->gr3d = gr3d;
-    tegra_devices[i]->gr2d = gr2d;
-    tegra_devices[i]->drm = drm;
 
     *device = i;
     *get_proc_address = vdp_get_proc_address;
