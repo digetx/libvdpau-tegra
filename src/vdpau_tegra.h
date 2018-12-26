@@ -111,6 +111,9 @@
     fprintf(stderr, "%s:%d/%s(): " fmt, \
             __FILE__, __LINE__, __func__, ##args)
 
+#define InfoMsg(fmt, args...) \
+    fprintf(stderr, "vdpau-tegra: " fmt, ##args)
+
 #define DebugMsg(fmt, args...) \
 do { \
     if (tegra_vdpau_debug) \
@@ -135,6 +138,7 @@ typedef union TegraXvVdpauInfo {
 extern bool tegra_vdpau_debug;
 extern bool tegra_vdpau_force_xv;
 extern bool tegra_vdpau_force_dri;
+extern bool tegra_vdpau_dri_xv_autoswitch;
 
 extern VdpCSCMatrix CSC_BT_601;
 extern VdpCSCMatrix CSC_BT_709;

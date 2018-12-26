@@ -25,6 +25,7 @@ bool tegra_vdpau_debug;
 bool tegra_vdpau_force_xv;
 bool tegra_vdpau_force_dri;
 bool tegra_vdpau_force_xv_v1;
+bool tegra_vdpau_dri_xv_autoswitch;
 
 static tegra_device  * tegra_devices[MAX_DEVICES_NB];
 static tegra_decoder * tegra_decoders[MAX_DECODERS_NB];
@@ -710,6 +711,17 @@ err_cleanup:
     return ret;
 }
 
+static bool x11_screen_is_composited(Display *display, int screen)
+{
+    Atom NET_WM_CM;
+    char buf[50];
+
+    sprintf(buf, "_NET_WM_CM_S%d", screen);
+    NET_WM_CM = XInternAtom(display, buf, False);
+
+    return XGetSelectionOwner(display, NET_WM_CM) != None;
+}
+
 EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
                                              int screen,
                                              VdpDevice *device,
@@ -744,6 +756,22 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     debug_str = getenv("VDPAU_TEGRA_FORCE_DRI");
     if (debug_str && strcmp(debug_str, "0")) {
         tegra_vdpau_force_dri = true;
+    }
+
+    debug_str = getenv("VDPAU_TEGRA_DRI_XV_AUTOSWITCH");
+    if (debug_str && strcmp(debug_str, "0")) {
+        tegra_vdpau_dri_xv_autoswitch = true;
+
+    } else if (!(tegra_vdpau_force_xv || tegra_vdpau_force_dri)) {
+
+        if (!x11_screen_is_composited(display, screen)) {
+            DebugMsg("Compositor undetected, enabling DRI<->Xv autoswitch\n");
+            tegra_vdpau_dri_xv_autoswitch = true;
+        } else {
+            InfoMsg("Compositor detected, defaulting to DRI output (use Xv to avoid tearing), see "
+                    "https://github.com/grate-driver/libvdpau-tegra/blob/master/README.md#environment-variables\n");
+            tegra_vdpau_force_dri = true;
+        }
     }
 
     drm_fd = drmOpen("tegra", NULL);
