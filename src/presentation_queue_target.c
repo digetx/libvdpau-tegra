@@ -182,8 +182,8 @@ static void pqt_display_dri(tegra_pqt *pqt, tegra_surface *surf)
     DebugMsg("surface %u DRI\n", surf->surface_id);
 
     DRI2GetMSC(dev->display, pqt->drawable, &ust, &msc, &sbc);
-    DRI2SwapBuffers(dev->display, pqt->drawable, 0, 0, 0, &count);
-    DRI2WaitMSC(dev->display, pqt->drawable, msc + 1, 1, 1, &ust, &msc, &sbc);
+    DRI2SwapBuffers(dev->display, pqt->drawable, msc + 1, 0, 0, &count);
+    DRI2WaitMSC(dev->display, pqt->drawable, msc + 1, 0, 0, &ust, &msc, &sbc);
 
     if (pqt->dri_prep_surf == surf) {
         pqt->dri_prep_surf = NULL;
