@@ -82,7 +82,7 @@ If you don't see anything related to VDPAU, it means that it doesn't work for so
 
 Debug messages could be enabled using these environment variables: `VDPAU_TRACE=1` `VDPAU_TEGRA_DEBUG=1`.
 
-Other environment variables:
+# Environment variables:
 
 * `VDPAU_TEGRA_FORCE_XV=1` force display output to Xv overlay
 * `VDPAU_TEGRA_FORCE_DRI=1` force display output using DRI
