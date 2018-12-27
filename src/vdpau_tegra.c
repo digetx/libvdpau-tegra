@@ -777,8 +777,8 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
         disp_composited = x11_screen_is_composited(display, screen);
         disp_rotated = xrandr_screen_is_rotated(display, screen);
 
-        if (!disp_rotated && !disp_rotated) {
-            DebugMsg("Compositor undetected, enabling DRI<->Xv autoswitch\n");
+        if (!disp_composited && !disp_rotated) {
+            DebugMsg("Compositor/rotation undetected, enabling DRI<->Xv autoswitch\n");
             tegra_vdpau_dri_xv_autoswitch = true;
         } else {
             InfoMsg("Compositor detected %d display rotated %d, defaulting to DRI output (use Xv to avoid tearing), see "
