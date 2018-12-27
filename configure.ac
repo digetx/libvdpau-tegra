@@ -19,7 +19,7 @@ PKG_PROG_PKG_CONFIG
 gl_VISIBILITY
 
 # Checks for dependencies.
-PKG_CHECK_MODULES(X11, x11 xext xextproto xfixes)
+PKG_CHECK_MODULES(X11, x11 xext xextproto xfixes xrandr)
 AC_SUBST(X11_CFLAGS)
 AC_SUBST(X11_LIBS)
 

@@ -57,6 +57,7 @@
 #include <X11/extensions/dri2tokens.h>
 #include <X11/extensions/Xext.h>
 #include <X11/extensions/Xfixes.h>
+#include <X11/extensions/Xrandr.h>
 #include <X11/extensions/Xvlib.h>
 
 #include "atomic.h"
@@ -161,6 +162,8 @@ typedef struct tegra_device {
     bool dri2_ready;
     bool xv_ready;
     bool xv_v2;
+    bool disp_composited;
+    bool disp_rotated;
     int screen;
     int vde_fd;
     int drm_fd;

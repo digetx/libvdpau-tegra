@@ -722,6 +722,15 @@ static bool x11_screen_is_composited(Display *display, int screen)
     return XGetSelectionOwner(display, NET_WM_CM) != None;
 }
 
+static bool xrandr_screen_is_rotated(Display *display, int screen)
+{
+    Rotation rotation;
+
+    XRRRotations(display, screen, &rotation);
+
+    return rotation != RR_Rotate_0;
+}
+
 EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
                                              int screen,
                                              VdpDevice *device,
@@ -732,6 +741,8 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     struct drm_tegra_channel *gr2d = NULL;
     VdpDevice i;
     drm_magic_t magic;
+    bool disp_composited = false;
+    bool disp_rotated = false;
     bool dri_failed;
     char *debug_str;
     int vde_fd = -1;
@@ -763,13 +774,16 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
         tegra_vdpau_dri_xv_autoswitch = true;
 
     } else if (!(tegra_vdpau_force_xv || tegra_vdpau_force_dri)) {
+        disp_composited = x11_screen_is_composited(display, screen);
+        disp_rotated = xrandr_screen_is_rotated(display, screen);
 
-        if (!x11_screen_is_composited(display, screen)) {
+        if (!disp_rotated && !disp_rotated) {
             DebugMsg("Compositor undetected, enabling DRI<->Xv autoswitch\n");
             tegra_vdpau_dri_xv_autoswitch = true;
         } else {
-            InfoMsg("Compositor detected, defaulting to DRI output (use Xv to avoid tearing), see "
-                    "https://github.com/grate-driver/libvdpau-tegra/blob/master/README.md#environment-variables\n");
+            InfoMsg("Compositor detected %d display rotated %d, defaulting to DRI output (use Xv to avoid tearing), see "
+                    "https://github.com/grate-driver/libvdpau-tegra/blob/master/README.md#environment-variables\n",
+                    disp_composited, disp_rotated);
             tegra_vdpau_force_dri = true;
         }
     }
@@ -835,6 +849,8 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
 
     atomic_set(&tegra_devices[i]->refcnt, 1);
 
+    tegra_devices[i]->disp_composited = disp_composited;
+    tegra_devices[i]->disp_rotated = disp_rotated;
     tegra_devices[i]->display = display;
     tegra_devices[i]->screen = screen;
     tegra_devices[i]->vde_fd = vde_fd;
