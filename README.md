@@ -86,6 +86,7 @@ Debug messages could be enabled using these environment variables: `VDPAU_TRACE=
 
 * `VDPAU_TEGRA_FORCE_XV=1` force display output to Xv overlay
 * `VDPAU_TEGRA_FORCE_DRI=1` force display output using DRI
+* `VDPAU_TEGRA_DRI_XV_AUTOSWITCH=1` force-enable Xv<=>DRI output autoswitching (which is disabled if compositor or display rotation detected)
 
 # Todo:
 
