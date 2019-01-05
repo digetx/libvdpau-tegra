@@ -108,6 +108,8 @@
 #define __align_mask(value, mask)  (((value) + (mask)) & ~(mask))
 #define ALIGN(value, alignment)    __align_mask(value, (typeof(value))((alignment) - 1))
 
+#define ALIGNED(x, a)               (!((x) & ((a) - 1)))
+
 #define ErrorMsg(fmt, args...) \
     fprintf(stderr, "%s:%d/%s(): " fmt, \
             __FILE__, __LINE__, __func__, ##args)
@@ -387,6 +389,16 @@ void shared_surface_kill_disp(tegra_surface *disp);
 tegra_shared_surface * shared_surface_get(tegra_surface *disp);
 
 bool tegra_check_xv_atom(tegra_device *dev, char const *atom_name);
+
+int rotate_surface_gr2d(tegra_surface *src_surf,
+                        tegra_surface *dst_surf,
+                        struct host1x_csc_params *csc,
+                        enum host1x_2d_rotate rotate,
+                        unsigned int sx, unsigned int sy,
+                        unsigned int src_width, int src_height,
+                        unsigned int dx, unsigned int dy,
+                        unsigned int dst_width, int dst_height,
+                        bool check_only);
 
 VdpTime get_time(void);
 

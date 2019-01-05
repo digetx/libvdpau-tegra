@@ -6,6 +6,7 @@ vdpau_tegra_libdir = $(libdir)/vdpau
 vdpau_tegra_lib_LTLIBRARIES = libvdpau_tegra.la
 
 libvdpau_tegra_la_SOURCES = vdpau_tegra.c \
+                            surface_rotate.c \
                             surface_output.c \
                             surface_bitmap.c \
                             surface_video.c \

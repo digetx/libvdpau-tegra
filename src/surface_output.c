@@ -415,7 +415,6 @@ static VdpStatus surface_render_bitmap_surface(
                             VdpOutputSurfaceRenderBlendState const *blend_state,
                             uint32_t flags)
 {
-    tegra_surface *tmp_surf = NULL;
     tegra_shared_surface *shared;
     enum host1x_2d_rotate rotate;
     pixman_image_t *src_pix_region = NULL;
@@ -429,8 +428,8 @@ static VdpStatus surface_render_bitmap_surface(
     int16_t src_x0, src_y0;
     uint32_t dst_width, dst_height;
     int16_t dst_x0, dst_y0;
-    uint32_t rot_width, rot_height;
     uint32_t clear_color = 0xFFFFFFFF;
+    bool hw_rotate = false;
     int need_scale = 0;
     int need_rotate = 0;
     int ret;
@@ -466,26 +465,18 @@ static VdpStatus surface_render_bitmap_surface(
     switch (flags & 3) {
     case VDP_OUTPUT_SURFACE_RENDER_ROTATE_90:
         rotate = ROT_270;
-        rot_width = dst_height;
-        rot_height = dst_width;
         need_rotate = 1;
         break;
     case VDP_OUTPUT_SURFACE_RENDER_ROTATE_180:
         rotate = ROT_180;
-        rot_width = dst_width;
-        rot_height = dst_height;
         need_rotate = 1;
         break;
     case VDP_OUTPUT_SURFACE_RENDER_ROTATE_270:
         rotate = ROT_90;
-        rot_width = dst_height;
-        rot_height = dst_width;
         need_rotate = 1;
         break;
     default:
         rotate = IDENTITY;
-        rot_width = dst_width;
-        rot_height = dst_height;
         break;
     }
 
@@ -496,97 +487,45 @@ static VdpStatus surface_render_bitmap_surface(
         if (!shared && !src_surf->data_allocated) {
             put_surface(src_surf);
             clear_color = 0;
+
+            pthread_mutex_unlock(&src_surf->lock);
             src_surf = NULL;
+            goto out_1;
+        }
+
+        if (need_rotate && !blend_state) {
+            if (shared) {
+                ret = rotate_surface_gr2d(shared->video,
+                                          dst_surf,
+                                          &shared->csc,
+                                          rotate,
+                                          0, 0,
+                                          shared->src_width,
+                                          shared->src_height,
+                                          dst_x0,
+                                          dst_y0,
+                                          dst_width,
+                                          dst_height,
+                                          true);
+
+                if (src_x0 == shared->dst_x0 &&
+                    src_y0 == shared->dst_y0 &&
+                    src_width == shared->dst_width &&
+                    src_height == shared->dst_height &&
+                    ret == 0)
+                {
+                    DebugMsg("HW-offloaded video rotation\n");
+                    hw_rotate = true;
+                } else {
+                    DebugMsg("rotation can't be offloaded to HW\n");
+                }
+            }
         }
 
         pthread_mutex_unlock(&src_surf->lock);
 
-        if (src_surf == NULL) {
-            goto out_1;
-        }
-
-        if (need_rotate) {
-            if (shared) {
-                if (src_x0 == shared->dst_x0 &&
-                    src_y0 == shared->dst_y0 &&
-                    src_width == shared->dst_width &&
-                    src_height == shared->dst_height)
-                {
-                    DebugMsg("HW-offloaded video rotation\n");
-
-                    tmp_surf = alloc_surface(src_surf->dev,
-                                             rot_width, rot_height,
-                                             src_surf->rgba_format, 0, 0);
-                    if (tmp_surf) {
-                        ret = host1x_gr2d_surface_blit(&tmp_surf->stream_2d,
-                                                       shared->video->pixbuf,
-                                                       tmp_surf->pixbuf,
-                                                       &shared->csc,
-                                                       shared->src_x0,
-                                                       shared->src_y0,
-                                                       shared->src_width,
-                                                       shared->src_height,
-                                                       0,
-                                                       0,
-                                                       rot_width,
-                                                       rot_height);
-                        if (ret) {
-                            ErrorMsg("video surface blitting failed %d\n", ret);
-                            unref_surface(tmp_surf);
-                            tmp_surf = NULL;
-                        } else {
-                            src_x0 = 0;
-                            src_y0 = 0;
-                        }
-                    } else {
-                        ErrorMsg("Failed to allocate tmp surface\n");
-                    }
-                } else {
-                    DebugMsg("rotation can't be offloaded to HW\n");
-                }
-            } else {
-                DebugMsg("HW-offloaded surface rotation\n");
-
-                tmp_surf = alloc_surface(src_surf->dev, rot_width, rot_height,
-                                         src_surf->rgba_format, 0, 0);
-                if (tmp_surf) {
-                    ret = host1x_gr2d_surface_blit(&tmp_surf->stream_2d,
-                                                   src_surf->pixbuf,
-                                                   tmp_surf->pixbuf,
-                                                   &csc_rgb_default,
-                                                   src_x0,
-                                                   src_y0,
-                                                   src_width,
-                                                   src_height,
-                                                   0,
-                                                   0,
-                                                   rot_width,
-                                                   rot_height);
-                    if (ret) {
-                        ErrorMsg("tmo surface blitting failed %d\n", ret);
-                        unref_surface(tmp_surf);
-                        tmp_surf = NULL;
-                    } else {
-                        src_x0 = 0;
-                        src_y0 = 0;
-                    }
-                } else {
-                    ErrorMsg("Failed to allocate tmp surface\n");
-                }
-            }
-        }
-
         if (shared) {
             unref_shared_surface(shared);
-        }
-
-        if (!tmp_surf) {
-            ret = shared_surface_transfer_video(src_surf);
-            if (ret) {
-                put_surface(dst_surf);
-                put_surface(src_surf);
-                return VDP_STATUS_RESOURCES;
-            }
         }
     }
 
@@ -700,7 +639,7 @@ out_1:
         break;
     }
 
-    if (!need_rotate || tmp_surf) {
+    if (!need_rotate || hw_rotate) {
         if (src_surf->rgba_format == dst_surf->rgba_format &&
             blend_state &&
             blend_state->blend_factor_source_color      == VDP_OUTPUT_SURFACE_RENDER_BLEND_FACTOR_ONE &&
@@ -710,30 +649,46 @@ out_1:
             blend_state->blend_equation_color           == VDP_OUTPUT_SURFACE_RENDER_BLEND_EQUATION_ADD &&
             blend_state->blend_equation_alpha           == VDP_OUTPUT_SURFACE_RENDER_BLEND_EQUATION_ADD)
         {
-            if (tmp_surf) {
-                ret = blend_surface(dst_surf->dev, src_surf, tmp_surf,
-                                    src_x0, src_y0, rot_width, rot_height,
-                                    dst_x0, dst_y0, rot_width, rot_height,
-                                    colors, flags);
-
-                unref_surface(tmp_surf);
-            } else {
-                ret = blend_surface(dst_surf->dev, src_surf, dst_surf,
-                                    src_x0, src_y0, src_width, src_height,
-                                    dst_x0, dst_y0, dst_width, dst_height,
-                                    colors, flags);
+            ret = shared_surface_transfer_video(src_surf);
+            if (ret) {
+                pthread_mutex_unlock(&dst_surf->lock);
+                put_surface(dst_surf);
+                put_surface(src_surf);
+                return VDP_STATUS_RESOURCES;
             }
-        } else {
-            if (tmp_surf) {
-                ret = host1x_gr2d_blit(&tmp_surf->stream_2d,
-                                       tmp_surf->pixbuf,
-                                       dst_surf->pixbuf,
-                                       rotate,
-                                       src_x0, src_y0,
-                                       dst_x0, dst_y0,
-                                       rot_width, rot_height);
 
-                unref_surface(tmp_surf);
+            ret = blend_surface(dst_surf->dev, src_surf, dst_surf,
+                                src_x0, src_y0, src_width, src_height,
+                                dst_x0, dst_y0, dst_width, dst_height,
+                                colors, flags);
+        } else {
+            if (hw_rotate) {
+                pthread_mutex_lock(&src_surf->lock);
+
+                shared = shared_surface_get(src_surf);
+                if (shared) {
+                    ret = rotate_surface_gr2d(shared->video,
+                                              dst_surf,
+                                              &shared->csc,
+                                              rotate,
+                                              0, 0,
+                                              shared->src_width,
+                                              shared->src_height,
+                                              dst_x0,
+                                              dst_y0,
+                                              dst_width,
+                                              dst_height,
+                                              false);
+                } else {
+                    ErrorMsg("shared surface disappeared unexpectedly\n");
+                    ret = -EINVAL;
+                }
+
+                pthread_mutex_unlock(&src_surf->lock);
+
+                if (shared) {
+                    unref_shared_surface(shared);
+                }
             } else {
                 ret = host1x_gr2d_surface_blit(&dst_surf->stream_2d,
                                                src_surf->pixbuf,
@@ -757,6 +712,14 @@ out_1:
     }
 
     ret = map_surface_data(dst_surf);
+    if (ret) {
+        pthread_mutex_unlock(&dst_surf->lock);
+        put_surface(dst_surf);
+        put_surface(src_surf);
+        return VDP_STATUS_RESOURCES;
+    }
+
+    ret = shared_surface_transfer_video(src_surf);
     if (ret) {
         pthread_mutex_unlock(&dst_surf->lock);
         put_surface(dst_surf);
