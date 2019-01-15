@@ -77,6 +77,7 @@ static int pqt_update_dri_pixbuf(tegra_pqt *pqt)
     struct drm_tegra_bo *bo;
     DRI2Buffer *buf;
     unsigned int attachment = DRI2BufferBackLeft;
+    unsigned int format;
     int width, height;
     int outCount;
     int err;
@@ -97,6 +98,29 @@ static int pqt_update_dri_pixbuf(tegra_pqt *pqt)
 
     DebugMsg("width %d height %d\n", width, height);
 
+    switch (buf[0].cpp) {
+    case 4:
+        format = PIX_BUF_FMT_ARGB8888;
+        break;
+
+    case 2:
+        format = PIX_BUF_FMT_RGB565;
+        break;
+
+    default:
+        ErrorMsg("Unsupported CPP %u\n", buf[0].cpp);
+        pqt_destroy_dri2_drawable(pqt);
+
+        if (!tegra_vdpau_force_xv) {
+            DebugMsg("forcing Xv output\n");
+            tegra_vdpau_force_xv = true;
+            tegra_vdpau_force_dri = false;
+            tegra_vdpau_dri_xv_autoswitch = false;
+        }
+
+        return -1;
+    }
+
     err = drm_tegra_bo_from_name(&bo, dev->drm, buf[0].names[0], 0);
     if (err) {
         return err;
@@ -109,8 +133,7 @@ static int pqt_update_dri_pixbuf(tegra_pqt *pqt)
     }
 
     pqt->dri_pixbuf = host1x_pixelbuffer_wrap(&bo, width, height,
-                                              buf[0].pitch[0], 0,
-                                              PIX_BUF_FMT_ARGB8888,
+                                              buf[0].pitch[0], 0, format,
                                               PIX_BUF_LAYOUT_LINEAR);
     if (!pqt->dri_pixbuf) {
         drm_tegra_bo_unref(bo);
@@ -387,16 +410,30 @@ static void pqt_update_dri_buffer(tegra_pqt *pqt, tegra_surface *surf)
     } else if (surf->pixbuf) {
         DebugMsg("surface %u transfer RGB\n", surf->surface_id);
 
-        ret = host1x_gr2d_blit(&surf->stream_2d,
-                               surf->pixbuf,
-                               pqt->dri_pixbuf,
-                               IDENTITY,
-                               0,
-                               0,
-                               0,
-                               0,
-                               surf->disp_width,
-                               surf->disp_height);
+        if (surf->pixbuf->format == pqt->dri_pixbuf->format)
+            ret = host1x_gr2d_blit(&surf->stream_2d,
+                                   surf->pixbuf,
+                                   pqt->dri_pixbuf,
+                                   IDENTITY,
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   surf->disp_width,
+                                   surf->disp_height);
+        else
+            ret = host1x_gr2d_surface_blit(&surf->stream_2d,
+                                           surf->pixbuf,
+                                           pqt->dri_pixbuf,
+                                           &csc_rgb_default,
+                                           0,
+                                           0,
+                                           surf->disp_width,
+                                           surf->disp_height,
+                                           0,
+                                           0,
+                                           surf->disp_width,
+                                           surf->disp_height);
         if (ret) {
             ErrorMsg("video transfer failed %d\n", ret);
         }

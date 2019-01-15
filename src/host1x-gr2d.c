@@ -503,6 +503,9 @@ int host1x_gr2d_surface_blit(struct tegra_stream *stream,
     }
 
     switch (src->format) {
+    case PIX_BUF_FMT_RGB565:
+        src_fmt = 8;
+        break;
     case PIX_BUF_FMT_ABGR8888:
         src_fmt = 14;
         break;
@@ -518,6 +521,9 @@ int host1x_gr2d_surface_blit(struct tegra_stream *stream,
     }
 
     switch (dst->format) {
+    case PIX_BUF_FMT_RGB565:
+        dst_fmt = 8;
+        break;
     case PIX_BUF_FMT_ABGR8888:
         dst_fmt = 14;
         break;
