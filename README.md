@@ -42,6 +42,13 @@ sudo emerge libvdpau-tegra-driver
 
 There is PKGBUILD in https://aur.archlinux.org/packages/libvdpau-tegra-git/.
 
+### Fedora
+
+```
+sudo dnf config-manager --add-repo https://repos.fedorapeople.org/repos/kwizart/ac100/fedora-ac100.repo
+sudo dnf install libvdpau-tegra
+```
+
 ### From sources
 
 ```
