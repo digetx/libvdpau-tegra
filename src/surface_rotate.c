@@ -50,23 +50,20 @@ int rotate_surface_gr2d(tegra_surface *src_surf,
     pthread_mutex_lock(&dst_surf->lock);
 
     if (!(src_surf->flags & SURFACE_VIDEO)) {
+        DebugMsg("src isn't video surface\n");
         ret = -EINVAL;
         goto out_unlock;
     }
 
     if (!(dst_surf->flags & SURFACE_OUTPUT)) {
-        ret = -EINVAL;
-        goto out_unlock;
-    }
-
-    if (src_width  != src_surf->width ||
-        src_height != src_surf->height) {
+        DebugMsg("dst isn't output surface\n");
         ret = -EINVAL;
         goto out_unlock;
     }
 
     if (dst_surf->rgba_format != VDP_RGBA_FORMAT_R8G8B8A8 &&
         dst_surf->rgba_format != VDP_RGBA_FORMAT_B8G8R8A8) {
+        DebugMsg("dst has unsupported format %d\n", dst_surf->rgba_format);
         ret = -EINVAL;
         goto out_unlock;
     }
@@ -88,6 +85,7 @@ int rotate_surface_gr2d(tegra_surface *src_surf,
         break;
 
     default:
+        DebugMsg("invalid mode %d\n", rotate);
         ret = -EINVAL;
         goto out_unlock;
     }
