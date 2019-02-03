@@ -82,7 +82,7 @@ int host1x_gr2d_clear_rect(struct tegra_stream *stream,
                       1 << 2 /* turbofill */);
     tegra_stream_push(stream, 0x000000cc);
     tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x2b, 9));
-    tegra_stream_push_reloc(stream, pixbuf->bo, 0);
+    tegra_stream_push_reloc(stream, pixbuf->bo, pixbuf->bo_offset);
     tegra_stream_push(stream, pixbuf->pitch);
     tegra_stream_push(stream, HOST1X_OPCODE_NONINCR(0x35, 1));
     tegra_stream_push(stream, color);
@@ -180,7 +180,7 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
     tegra_stream_push(stream, clip_y0 << 16 | clip_x0);
     tegra_stream_push(stream, clip_y1 << 16 | clip_x1);
     tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x2b, 9));
-    tegra_stream_push_reloc(stream, pixbuf->bo, 0);
+    tegra_stream_push_reloc(stream, pixbuf->bo, pixbuf->bo_offset);
     tegra_stream_push(stream, pixbuf->pitch);
     tegra_stream_push(stream, HOST1X_OPCODE_NONINCR(0x35, 1));
     tegra_stream_push(stream, color);
@@ -413,9 +413,11 @@ yflip_setup:
     tegra_stream_push(stream, dst_tiled << 20 | src_tiled); /* tilemode */
 
     tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x02b, 0xf149));
-    tegra_stream_push_reloc(stream, dst->bo, dst_offset); /* dstba */
+    tegra_stream_push_reloc(stream, dst->bo,
+                            dst->bo_offset + dst_offset); /* dstba */
     tegra_stream_push(stream, dst->pitch); /* dstst */
-    tegra_stream_push_reloc(stream, src->bo, src_offset); /* srcba */
+    tegra_stream_push_reloc(stream, src->bo,
+                            src->bo_offset + src_offset); /* srcba */
     tegra_stream_push(stream, src->pitch); /* srcst */
     tegra_stream_push(stream, src_height << 16 | src_width); /* srcsize */
     tegra_stream_push(stream, dst_height << 16 | dst_width); /* dstsize */
@@ -609,9 +611,9 @@ coords_check:
         /* tile mode */
         tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x04b, 3));
         tegra_stream_push_reloc(stream, src->bos[2], /* vba */
-                                src->bo_offset[2] + sb_offset(src, sx, sy, true));
+                                src->bos_offset[2] + sb_offset(src, sx, sy, true));
         tegra_stream_push_reloc(stream, src->bos[1], /* uba */
-                                src->bo_offset[1] + sb_offset(src, sx, sy, true));
+                                src->bos_offset[1] + sb_offset(src, sx, sy, true));
 
         tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x15, 0x7E7));
 
@@ -621,9 +623,9 @@ coords_check:
 
         /* linear mode */
         tegra_stream_push_reloc(stream, src->bos[1], /* uba */
-                                src->bo_offset[1] + sb_offset(src, sx, sy, true));
+                                src->bos_offset[1] + sb_offset(src, sx, sy, true));
         tegra_stream_push_reloc(stream, src->bos[2], /* vba */
-                                src->bo_offset[2] + sb_offset(src, sx, sy, true));
+                                src->bos_offset[2] + sb_offset(src, sx, sy, true));
     }
 
     tegra_stream_push(stream, dst_fmt << 8 | src_fmt); /* sbformat */
@@ -650,18 +652,18 @@ coords_check:
      */
     tegra_stream_push(stream, dst_tiled << 20 | src_tiled << 4 | src_tiled); /* tilemode */
     tegra_stream_push_reloc(stream, src->bo, /* srcba_sb_surfbase */
-                            sb_offset(src, sx, sy, false));
+                            src->bo_offset + sb_offset(src, sx, sy, false));
     tegra_stream_push_reloc(stream, dst->bo, /* dstba_sb_surfbase */
-                            sb_offset(dst, dx, dy, false) +
+                            dst->bo_offset + sb_offset(dst, dx, dy, false) +
                                 yflip * dst->pitch * dst_height);
 
     tegra_stream_push(stream, HOST1X_OPCODE_MASK(0x02b, 0x3149));
     tegra_stream_push_reloc(stream, dst->bo, /* dstba */
-                            sb_offset(dst, dx, dy, false) +
+                            dst->bo_offset + sb_offset(dst, dx, dy, false) +
                                 yflip * dst->pitch * dst_height);
     tegra_stream_push(stream, dst->pitch); /* dstst */
     tegra_stream_push_reloc(stream, src->bo, /* srcba */
-                            sb_offset(src, sx, sy, false));
+                            src->bo_offset + sb_offset(src, sx, sy, false));
     tegra_stream_push(stream, src->pitch); /* srcst */
     tegra_stream_push(stream, src_height << 16 | src_width); /* srcsize */
     tegra_stream_push(stream, dst_height << 16 | dst_width); /* dstsize */

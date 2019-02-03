@@ -111,7 +111,10 @@ struct host1x_pixelbuffer {
     unsigned pitch;
     unsigned pitch_uv;
     uint32_t guard_offset[3];
-    uint32_t bo_offset[3];
+    union {
+        uint32_t bo_offset;
+        uint32_t bos_offset[3];
+    };
     bool guard_enabled;
 };
 

@@ -351,7 +351,7 @@ static int blend_surface(tegra_device *dev,
 
     host1x_gr3d_setup_render_target(stream, 1,
                                     dst_surf->bo,
-                                    dst_surf->pixbuf->bo_offset[0],
+                                    dst_surf->pixbuf->bo_offset,
                                     TGR3D_PIXEL_FORMAT_RGBA8888,
                                     dst_surf->pixbuf->pitch);
 
@@ -374,7 +374,7 @@ static int blend_surface(tegra_device *dev,
 
     host1x_gr3d_setup_texture_desc(stream, 0,
                                    src_surf->bo,
-                                   src_surf->pixbuf->bo_offset[0],
+                                   src_surf->pixbuf->bo_offset,
                                    src_surf->width,
                                    src_surf->height,
                                    TGR3D_PIXEL_FORMAT_RGBA8888,

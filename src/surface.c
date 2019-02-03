@@ -102,6 +102,8 @@ int map_surface_data(tegra_surface *surf)
             if (err < 0) {
                 goto err_cleanup;
             }
+
+            surf->y_data += surf->pixbuf->bos_offset[0];
         }
 
         if (!surf->cb_data) {
@@ -111,7 +113,7 @@ int map_surface_data(tegra_surface *surf)
                 goto err_cleanup;
             }
 
-            surf->cb_data += surf->pixbuf->bo_offset[1];
+            surf->cb_data += surf->pixbuf->bos_offset[1];
         }
 
         if (!surf->cr_data) {
@@ -121,7 +123,7 @@ int map_surface_data(tegra_surface *surf)
                 goto err_cleanup;
             }
 
-            surf->cr_data += surf->pixbuf->bo_offset[2];
+            surf->cr_data += surf->pixbuf->bos_offset[2];
         }
     } else {
         if (!surf->pix) {
@@ -308,6 +310,8 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
+        frame->y_offset = pixbuf->bos_offset[0];
+
         /* blue plane */
 
         ret = drm_tegra_bo_to_dmabuf(surf->cb_bo, (uint32_t *) &frame->cb_fd);
@@ -318,7 +322,7 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
-        frame->cb_offset = pixbuf->bo_offset[1];
+        frame->cb_offset = pixbuf->bos_offset[1];
 
         /* red plane */
 
@@ -330,7 +334,7 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
-        frame->cr_offset = pixbuf->bo_offset[2];
+        frame->cr_offset = pixbuf->bos_offset[2];
 
         /* aux stuff */
 

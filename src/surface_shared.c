@@ -74,9 +74,9 @@ static XvImage * create_video_xv(tegra_surface *video)
     pitches[1] = video->pixbuf->pitch_uv;
     pitches[2] = video->pixbuf->pitch_uv;
 
-    offsets[0] = video->pixbuf->bo_offset[0];
-    offsets[1] = video->pixbuf->bo_offset[1];
-    offsets[2] = video->pixbuf->bo_offset[2];
+    offsets[0] = video->pixbuf->bos_offset[0];
+    offsets[1] = video->pixbuf->bos_offset[1];
+    offsets[2] = video->pixbuf->bos_offset[2];
 
     return xv_img;
 }
