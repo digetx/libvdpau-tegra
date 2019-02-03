@@ -127,8 +127,6 @@ do { \
 #define CLAMP(_v, _vmin, _vmax) \
     (((_v) < (_vmin) ? (_vmin) : (((_v) > (_vmax)) ? (_vmax) : (_v))))
 
-#define UNIFIED_BUFFER  0
-
 typedef union TegraXvVdpauInfo {
     struct {
         unsigned int visible : 1;
