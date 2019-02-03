@@ -47,7 +47,6 @@ int rotate_surface_gr2d(tegra_surface *src_surf,
     if (!src_surf || !dst_surf)
         return -EINVAL;
 
-    pthread_mutex_lock(&src_surf->lock);
     pthread_mutex_lock(&dst_surf->lock);
 
     if (!(src_surf->flags & SURFACE_VIDEO)) {
@@ -204,7 +203,6 @@ out_unref:
 
 out_unlock:
     pthread_mutex_unlock(&dst_surf->lock);
-    pthread_mutex_unlock(&src_surf->lock);
 
     return ret;
 }
