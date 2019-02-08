@@ -100,7 +100,7 @@ int host1x_gr2d_clear_rect(struct tegra_stream *stream,
     if (err)
         return err;
 
-    err = tegra_stream_flush(stream);
+    err = tegra_stream_flush(stream, true);
     if (err)
         return err;
 
@@ -204,7 +204,7 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
     if (err)
         return err;
 
-    err = tegra_stream_flush(stream);
+    err = tegra_stream_flush(stream, true);
     if (err)
         return err;
 
@@ -444,7 +444,7 @@ yflip_setup:
     if (err)
         return err;
 
-    err = tegra_stream_flush(stream);
+    err = tegra_stream_flush(stream, true);
     if (err)
         return err;
 
@@ -705,7 +705,7 @@ coords_check:
     if (err)
         return err;
 
-    err = tegra_stream_flush(stream);
+    err = tegra_stream_flush(stream, true);
     if (err)
         return err;
 

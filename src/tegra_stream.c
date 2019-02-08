@@ -27,57 +27,62 @@
 
 #include "vdpau_tegra.h"
 
-/*
- * tegra_stream_init(channel)
- *
- * Create a stream for given channel. This function preallocates several
- * command buffers for later usage to improve performance. Streams are
- * used for generating command buffers opcode by opcode using
- * tegra_stream_push().
- */
-
-int tegra_stream_init(struct drm_tegra *drm,
-                      struct drm_tegra_channel *channel,
-                      struct tegra_stream *stream,
-                      uint32_t words_num)
+int tegra_stream_create(struct tegra_stream *stream, tegra_device *tegra)
 {
-    stream->status    = TEGRADRM_STREAM_FREE;
-    stream->channel   = channel;
-    stream->num_words = words_num ?: 1;
+    int err;
+
+    stream->status = TEGRADRM_STREAM_FREE;
+    stream->drm_fd = tegra->drm_fd;
+    stream->drm = tegra->drm;
+
+    err = drm_tegra_job_new_v2(&stream->job, tegra->drm, 16,
+                               0x10000 /* 64K is enough for everything! */);
+    if (err != 0) {
+        ErrorMsg("drm_tegra_job_new() failed %d\n", err);
+        return err;
+    }
 
     return 0;
 }
 
 /*
- * tegra_stream_release(stream)
+ * tegra_stream_destroy(stream)
  *
  * Destroy the given stream object. All resrouces are released.
  */
 
-void tegra_stream_release(struct tegra_stream *stream)
+void tegra_stream_destroy(struct tegra_stream *stream)
 {
     if (!stream)
         return;
 
-    drm_tegra_job_free(stream->job);
+    tegra_stream_wait_fence(stream->last_fence);
+    tegra_stream_put_fence(stream->last_fence);
+    drm_tegra_job_free_v2(stream->job);
 }
 
-/*
- * tegra_stream_flush(stream, fence)
- *
- * Send the current contents of stream buffer. The stream must be
- * synchronized correctly (we cannot send partial streams). If
- * pointer to fence is given, the fence will contain the syncpoint value
- * that is reached when operations in the buffer are finished.
- */
-
-int tegra_stream_flush(struct tegra_stream *stream)
+int tegra_stream_cleanup(struct tegra_stream *stream)
 {
-    struct drm_tegra_fence *fence;
+    if (!stream)
+        return -1;
+
+    drm_tegra_job_reset_v2(stream->job);
+    stream->status = TEGRADRM_STREAM_FREE;
+
+    return 0;
+}
+
+int tegra_stream_flush(struct tegra_stream *stream, bool gr2d)
+{
+    struct tegra_fence *f;
     int result = 0;
 
     if (!stream)
         return -1;
+
+    tegra_stream_wait_fence(stream->last_fence);
+    tegra_stream_put_fence(stream->last_fence);
+    stream->last_fence = NULL;
 
     /* Reflushing is fine */
     if (stream->status == TEGRADRM_STREAM_FREE)
@@ -89,28 +94,157 @@ int tegra_stream_flush(struct tegra_stream *stream)
         goto cleanup;
     }
 
-    result = drm_tegra_job_submit(stream->job, &fence);
-    if (result != 0) {
-        ErrorMsg("drm_tegra_job_submit() failed %d\n", result);
+    f = tegra_stream_create_fence(stream, gr2d);
+    if (!f) {
         result = -1;
         goto cleanup;
     }
 
-    result = drm_tegra_fence_wait_timeout(fence, 1000);
+    result = drm_tegra_job_submit_v2(stream->job, f->syncobj_handle, ~0ull);
     if (result != 0) {
-        ErrorMsg("drm_tegra_fence_wait_timeout() failed %d\n", result);
+        ErrorMsg("drm_tegra_job_submit_v2() failed %d\n", result);
+        result = -1;
+        goto cleanup;
+    }
+
+    tegra_stream_wait_fence(f);
+    tegra_stream_put_fence(f);
+
+cleanup:
+    tegra_stream_cleanup(stream);
+
+    return result;
+}
+
+struct tegra_fence * tegra_stream_submit(struct tegra_stream *stream, bool gr2d)
+{
+    struct tegra_fence *f;
+    int result;
+
+    if (!stream)
+        return NULL;
+
+    f = stream->last_fence;
+
+    /* Resubmitting is fine */
+    if (stream->status == TEGRADRM_STREAM_FREE)
+        return f;
+
+    /* Return error if stream is constructed badly */
+    if (stream->status != TEGRADRM_STREAM_READY) {
+        result = -1;
+        goto cleanup;
+    }
+
+    f = tegra_stream_create_fence(stream, gr2d);
+    tegra_stream_put_fence(stream->last_fence);
+    stream->last_fence = f;
+
+    if (!f) {
+        result = -1;
+        goto cleanup;
+    }
+
+    result = drm_tegra_job_submit_v2(stream->job, f->syncobj_handle, ~0ull);
+    if (result != 0) {
+        ErrorMsg("drm_tegra_job_submit() failed %d\n", result);
         result = -1;
     }
 
-    drm_tegra_fence_free(fence);
-
 cleanup:
-    drm_tegra_job_free(stream->job);
-
-    stream->job = NULL;
+    drm_tegra_job_reset_v2(stream->job);
     stream->status = TEGRADRM_STREAM_FREE;
 
-    return result;
+    return f;
+}
+
+struct tegra_fence * tegra_stream_ref_fence(struct tegra_fence *f, void *opaque)
+{
+    if (f) {
+        f->opaque = opaque;
+        f->refcnt++;
+    }
+
+    return f;
+}
+
+struct tegra_fence * tegra_stream_get_last_fence(struct tegra_stream *stream)
+{
+    if (stream->last_fence)
+        return tegra_stream_ref_fence(stream->last_fence,
+                                      stream->last_fence->opaque);
+
+    return NULL;
+}
+
+static int tegra_stream_create_syncobj(struct tegra_stream *stream,
+                                       uint32_t *syncobj_handle)
+{
+    int err;
+
+    err = drmSyncobjCreate(stream->drm_fd, 0, syncobj_handle);
+    if (err < 0) {
+        ErrorMsg("drmSyncobjCreate() failed %d\n", err);
+        return err;
+    }
+
+    return 0;
+}
+
+struct tegra_fence * tegra_stream_create_fence(struct tegra_stream *stream,
+                                               bool gr2d)
+{
+    struct tegra_fence *f = calloc(1, sizeof(*f));
+    int err;
+
+    if (f) {
+        err = tegra_stream_create_syncobj(stream, &f->syncobj_handle);
+        if (err) {
+            free(f);
+            return NULL;
+        }
+
+        f->drm_fd = stream->drm_fd;
+        f->gr2d = gr2d;
+    }
+
+    return f;
+}
+
+static uint64_t gettime_ns(void)
+{
+    struct timespec current;
+    clock_gettime(CLOCK_MONOTONIC, &current);
+    return (uint64_t)current.tv_sec * 1000000000ull + current.tv_nsec;
+}
+
+bool tegra_stream_wait_fence(struct tegra_fence *f)
+{
+    int result;
+
+    if (f) {
+        result = drmSyncobjWait(f->drm_fd, &f->syncobj_handle, 1,
+                                gettime_ns() + 1000000000,
+                                DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
+                                NULL);
+        if (result) {
+            ErrorMsg("drmSyncobjWait() failed %d (%s)\n",
+                     result, strerror(result));
+            return result;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+void tegra_stream_put_fence(struct tegra_fence *f)
+{
+    if (f && --f->refcnt < 0) {
+        drmSyncobjDestroy(f->drm_fd, f->syncobj_handle);
+        free(f);
+    }
 }
 
 /*
@@ -134,49 +268,18 @@ cleanup:
 
 int tegra_stream_begin(struct tegra_stream *stream)
 {
-    int ret;
-
-    if (!stream->channel) {
-        return -1;
-    }
-
     /* check stream and its state */
     if (!(stream && stream->status == TEGRADRM_STREAM_FREE)) {
         ErrorMsg("Stream status isn't FREE\n");
         return -1;
     }
 
-    ret = drm_tegra_job_new(&stream->job, stream->channel);
-    if (ret != 0) {
-        ErrorMsg("drm_tegra_job_new() failed %d\n", ret);
-        return -1;
-    }
-
-    ret = drm_tegra_pushbuf_new(&stream->buffer.pushbuf, stream->job);
-    if (ret != 0) {
-        ErrorMsg("drm_tegra_pushbuf_new() failed %d\n", ret);
-        drm_tegra_job_free(stream->job);
-        return -1;
-    }
-
-    ret = drm_tegra_pushbuf_prepare(stream->buffer.pushbuf, stream->num_words);
-    if (ret != 0) {
-        ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
-        drm_tegra_job_free(stream->job);
-        return -1;
-    }
-
     stream->class_id = 0;
     stream->status = TEGRADRM_STREAM_CONSTRUCT;
+    stream->op_done_synced = false;
 
     return 0;
 }
-
-/*
- * tegra_stream_push_reloc(stream, h, offset)
- *
- * Push a memory reference to the stream.
- */
 
 int tegra_stream_push_reloc(struct tegra_stream *stream,
                             struct drm_tegra_bo *bo,
@@ -189,11 +292,11 @@ int tegra_stream_push_reloc(struct tegra_stream *stream,
         return -1;
     }
 
-    ret = drm_tegra_pushbuf_relocate(stream->buffer.pushbuf,
-                                     bo, offset, 0);
+    ret = drm_tegra_job_push_reloc_v2(stream->job, bo, offset,
+                                      DRM_TEGRA_BO_TABLE_WRITE);
     if (ret != 0) {
         stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
-        ErrorMsg("drm_tegra_pushbuf_relocate() failed %d\n", ret);
+        ErrorMsg("drm_tegra_job_push_reloc_v2() failed %d\n", ret);
         return -1;
     }
 
@@ -208,21 +311,13 @@ int tegra_stream_push_reloc(struct tegra_stream *stream,
 
 int tegra_stream_push(struct tegra_stream *stream, uint32_t word)
 {
-    int ret;
-
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
         ErrorMsg("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
-    ret = drm_tegra_pushbuf_prepare(stream->buffer.pushbuf, 1);
-    if (ret != 0) {
-        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
-        ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
-        return -1;
-    }
-
-    *stream->buffer.pushbuf->ptr++ = word;
+    *stream->job->ptr++ = word;
+    stream->op_done_synced = false;
 
     return 0;
 }
@@ -258,22 +353,20 @@ int tegra_stream_push_setclass(struct tegra_stream *stream, unsigned class_id)
 
 int tegra_stream_end(struct tegra_stream *stream)
 {
-    int ret;
-
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
         ErrorMsg("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
-    ret = drm_tegra_pushbuf_sync(stream->buffer.pushbuf,
-                                 DRM_TEGRA_SYNCPT_COND_OP_DONE);
-    if (ret != 0) {
-        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
-        ErrorMsg("drm_tegra_pushbuf_sync() failed %d\n", ret);
-        return -1;
-    }
+    if (stream->op_done_synced)
+        goto ready;
 
+    tegra_stream_push(stream,
+                      HOST1X_OPCODE_IMM(0, DRM_TEGRA_SYNCPT_COND_OP_DONE << 8));
+
+ready:
     stream->status = TEGRADRM_STREAM_READY;
+    stream->op_done_synced = false;
 
     return 0;
 }
@@ -287,32 +380,51 @@ int tegra_stream_prep(struct tegra_stream *stream, uint32_t words)
         return -1;
     }
 
-    ret = drm_tegra_pushbuf_prepare(stream->buffer.pushbuf, words);
-    if (ret != 0) {
-        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
-        ErrorMsg("drm_tegra_pushbuf_prepare() failed %d\n", ret);
-        return -1;
+    if (stream->job->ptr + words >
+        stream->job->start + stream->job->num_words) {
+        if (words < 1024)
+            words = 1024;
+
+        ret = drm_tegra_job_resize_v2(stream->job,
+                                      stream->job->num_words + words,
+                                      stream->job->num_bos,
+                                      true);
+        if (ret != 0) {
+            stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
+            ErrorMsg("drm_tegra_job_resize_words_v2() failed %d\n", ret);
+            return -1;
+        }
     }
 
     return 0;
 }
 
 int tegra_stream_sync(struct tegra_stream *stream,
-                      enum drm_tegra_syncpt_cond cond)
+                      enum drm_tegra_syncpt_cond cond,
+                      bool keep_class)
 {
-    int ret;
+    struct drm_tegra_cmdstream_wait_syncpt wait;
 
     if (!(stream && stream->status == TEGRADRM_STREAM_CONSTRUCT)) {
         ErrorMsg("Stream status isn't CONSTRUCT\n");
         return -1;
     }
 
-    ret = drm_tegra_pushbuf_sync(stream->buffer.pushbuf, cond);
-    if (ret != 0) {
-        stream->status = TEGRADRM_STREAM_CONSTRUCTION_FAILED;
-        ErrorMsg("drm_tegra_pushbuf_sync() failed %d\n", ret);
-        return -1;
-    }
+    wait.threshold = DRM_TEGRA_WAIT_FOR_LAST_SYNCPT_INCR;
+
+    tegra_stream_prep(stream, 4);
+    tegra_stream_push(stream, HOST1X_OPCODE_IMM(0, cond << 8));
+
+    /* switch to host1x class to await the sync point increment */
+    tegra_stream_push(stream, HOST1X_OPCODE_SETCL(8, HOST1X_CLASS_HOST1X, 1));
+    tegra_stream_push(stream, wait.u_data);
+
+    /* return to the original class if desired */
+    if (keep_class)
+        tegra_stream_push(stream, HOST1X_OPCODE_SETCL(0, stream->class_id , 0));
+
+    if (cond == DRM_TEGRA_SYNCPT_COND_OP_DONE)
+        stream->op_done_synced = true;
 
     return 0;
 }

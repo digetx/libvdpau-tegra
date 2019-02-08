@@ -510,7 +510,7 @@ void host1x_gr3d_draw_primitives(struct tegra_stream *cmds,
      * XXX: This requires proper waitcheck barrier, expect graphical
      *      glitches due to not properly prefetched vertex / tex data.
      */
-    tegra_stream_sync(cmds, DRM_TEGRA_SYNCPT_COND_RD_DONE);
+    tegra_stream_sync(cmds, DRM_TEGRA_SYNCPT_COND_RD_DONE, true);
 
     tegra_stream_prep(cmds, 2);
 
@@ -520,7 +520,7 @@ void host1x_gr3d_draw_primitives(struct tegra_stream *cmds,
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_DRAW_PRIMITIVES, 1));
     tegra_stream_push(cmds, value);
 
-    tegra_stream_sync(cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE);
+    tegra_stream_sync(cmds, DRM_TEGRA_SYNCPT_COND_OP_DONE, true);
 }
 
 static void host1x_gr3d_upload_program(struct tegra_stream *cmds,

@@ -410,7 +410,7 @@ static int blend_surface(tegra_device *dev,
         goto out_unref;
     }
 
-    err = tegra_stream_flush(stream);
+    err = tegra_stream_flush(stream, false);
     if (err) {
         goto out_unref;
     }
