@@ -455,7 +455,8 @@ int host1x_gr2d_surface_blit(struct tegra_stream *stream,
     unsigned dst_fmt;
     unsigned hftype;
     unsigned vftype;
-    unsigned vfen;
+    unsigned vfen = 1;
+    unsigned hfen = 1;
     int err;
 
     if (!src)
@@ -554,22 +555,32 @@ coords_check:
     inv_scale_x = max(src_width - 1, 1) / (float)(dst_width - 1);
     inv_scale_y = max(src_height - 1, 1) / (float)(dst_height - 1);
 
-    if (inv_scale_y > 64.0f || inv_scale_y < 1.0f / 4096.0f) {
-        host1x_error("Unsupported Y scale\n");
-        return -EINVAL;
+    if (inv_scale_y < 1.0f / 4096.0f) {
+        inv_scale_y = 1.0f / 4096.0f;
+        vfen = 0;
     }
 
-    if (inv_scale_x > 64.0f || inv_scale_x < 1.0f / 4096.0f) {
-        host1x_error("Unsupported X scale\n");
-        return -EINVAL;
+    if (inv_scale_y > 64.0f - 1.0f / 4096.0f) {
+        inv_scale_y = 64.0f - 1.0f / 4096.0f;
+        vfen = 0;
     }
 
-    if (inv_scale_x == 1.0f)
+    if (inv_scale_x < 1.0f / 4096.0f) {
+        inv_scale_x = 1.0f / 4096.0f;
+        hfen = 0;
+    }
+
+    if (inv_scale_x > 64.0f - 1.0f / 4096.0f) {
+        inv_scale_x = 64.0f - 1.0f / 4096.0f;
+        hfen = 0;
+    }
+
+    if (inv_scale_x == 1.0f || !hfen)
         hftype = 7;
     else
         hftype = 0;
 
-    if (inv_scale_y == 1.0f) {
+    if (inv_scale_y == 1.0f || !vfen) {
         vftype = 0;
         vfen = 0;
 
