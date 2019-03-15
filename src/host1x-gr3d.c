@@ -497,6 +497,16 @@ void host1x_gr3d_draw_primitives(struct tegra_stream *cmds,
     uint32_t value = 0;
 
     /*
+     * Tegra30 has glitches without this, probably some cache / internal
+     * state maintenance.
+     */
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xb00, 0x00000001));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe41, 0x00000001));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xb00, 0x00000002));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe41, 0x00000003));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xb00, 0x00000003));
+
+    /*
      * XXX: This requires proper waitcheck barrier, expect graphical
      *      glitches due to not properly prefetched vertex / tex data.
      */
