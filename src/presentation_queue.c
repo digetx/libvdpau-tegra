@@ -318,6 +318,7 @@ VdpStatus vdp_presentation_queue_display(
         return VDP_STATUS_RESOURCES;
     }
 
+    pthread_mutex_lock(&pq->lock);
     pthread_mutex_lock(&surf->lock);
 
     if (surf->status == VDP_PRESENTATION_QUEUE_STATUS_QUEUED) {
@@ -333,10 +334,7 @@ VdpStatus vdp_presentation_queue_display(
     surf->disp_height = clip_height ?: surf->height;
 
     if (earliest_presentation_time == 0 || !_Xglobal_lock) {
-        pthread_mutex_lock(&pq->lock);
         pqt_display_surface(pq->pqt, surf, true, false);
-        pthread_mutex_unlock(&pq->lock);
-
         goto unlock_surf;
     }
 
@@ -346,13 +344,12 @@ VdpStatus vdp_presentation_queue_display(
     surf->status = VDP_PRESENTATION_QUEUE_STATUS_QUEUED;
     surf->earliest_presentation_time = earliest_presentation_time;
 
-    pthread_mutex_lock(&pq->lock);
     LIST_ADDTAIL(&surf->list_item, &pq->surf_list);
     pthread_cond_signal(&pq->cond);
-    pthread_mutex_unlock(&pq->lock);
 
 unlock_surf:
     pthread_mutex_unlock(&surf->lock);
+    pthread_mutex_unlock(&pq->lock);
 
     put_surface(surf);
     put_presentation_queue(pq);
@@ -439,8 +436,12 @@ VdpStatus vdp_presentation_queue_query_surface_status(
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    pthread_mutex_lock(&surf->lock);
+
     *status = surf->status;
     *first_presentation_time = surf->first_presentation_time;
+
+    pthread_mutex_unlock(&surf->lock);
 
     put_surface(surf);
     put_presentation_queue(pq);

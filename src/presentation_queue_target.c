@@ -504,17 +504,18 @@ void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf,
         }
     }
 
-    if (pqt->disp_surf != surf) {
-        pqt_display_surface_to_idle_state(pqt);
-        pqt->disp_surf = surf;
-    }
-
     if (update_status) {
         surf->first_presentation_time = get_time();
         surf->status = VDP_PRESENTATION_QUEUE_STATUS_VISIBLE;
     }
 
     pthread_mutex_unlock(&surf->lock);
+
+    if (pqt->disp_surf != surf) {
+        pqt_display_surface_to_idle_state(pqt);
+        pqt->disp_surf = surf;
+    }
+
     pthread_mutex_unlock(&pqt->lock);
 
     DebugMsg("surface %u-\n", surf->surface_id);
