@@ -70,6 +70,7 @@
 #include "util_double_list.h"
 #include "uapi/dma-buf.h"
 #include "uapi/tegra-vde.h"
+#include "uapi/tegra-vde-v1.h"
 
 #if HAVE_VISIBILITY
 #define EXPORTED __attribute__((__visibility__("default")))
@@ -246,6 +247,7 @@ typedef struct tegra_decoder {
     int is_baseline_profile;
     uint32_t width;
     uint32_t height;
+    bool v1;
 } tegra_decoder;
 
 typedef struct tegra_mixer {

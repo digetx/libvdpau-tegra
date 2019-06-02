@@ -362,8 +362,12 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
                                    int bitstream_data_fd,
                                    bitstream_reader *reader)
 {
+    struct tegra_vde_h264_decoder_ctx_v1 ctx_v1;
     struct tegra_vde_h264_decoder_ctx ctx;
-    struct tegra_vde_h264_frame dpb_frames[17];
+    union f_u {
+        struct tegra_vde_h264_frame_v1 dpb_frames_v1[17];
+        struct tegra_vde_h264_frame dpb_frames[17];
+    } f_u;
     tegra_device *dev = dec->dev;
     int32_t max_frame_num               = 1 << (info->log2_max_frame_num_minus4 + 4);
     int32_t delim_pic_order_cnt         = INT32_MAX;
@@ -373,6 +377,7 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     int frame_num_wrap                  = (info->frame_num == 0);
     int refs_num                        = 0;
     int err;
+    int i;
 
     if (dev == NULL) {
         return VDP_STATUS_INVALID_HANDLE;
@@ -402,9 +407,11 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     surf->frame->flags    &= ~FLAG_B_FRAME;
     surf->frame->flags    |= (slice_type == B_FRAME) ? FLAG_B_FRAME : 0;
 
-    dpb_frames[0]        = *surf->frame;
-    dpb_frames[0].flags |= info->is_reference ? FLAG_REFERENCE : 0;
-    dpb_frames[0].flags |= (slice_type_mod == B_FRAME) ? FLAG_B_FRAME : 0;
+    f_u.dpb_frames[0]        = *surf->frame;
+    f_u.dpb_frames[0].flags |= info->is_reference ? FLAG_REFERENCE : 0;
+    f_u.dpb_frames[0].flags |= (slice_type_mod == B_FRAME) ? FLAG_B_FRAME : 0;
+
+    memset(&f_u.dpb_frames[0].reserved, 0, sizeof(f_u.dpb_frames[0].reserved));
 
     if (slice_type_mod != I_FRAME) {
         if (info->pic_order_cnt_type == 0) {
@@ -418,12 +425,12 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
                 return VDP_STATUS_ERROR;
             }
 
-            refs_num = get_refs_sorted(dpb_frames, info->referenceFrames,
+            refs_num = get_refs_sorted(f_u.dpb_frames, info->referenceFrames,
                                        frame_num_wrap, max_frame_num,
                                        &ref_frames_with_earlier_poc_num,
                                        delim_pic_order_cnt);
         } else {
-            refs_num = get_refs_dpb_order(dpb_frames, info->referenceFrames,
+            refs_num = get_refs_dpb_order(f_u.dpb_frames, info->referenceFrames,
                                           frame_num_wrap, max_frame_num);
         }
     }
@@ -431,7 +438,7 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     ctx.bitstream_data_fd                   = bitstream_data_fd;
     ctx.bitstream_data_offset               = 0;
     ctx.dpb_frames_nb                       = 1 + refs_num;
-    ctx.dpb_frames_ptr                      = (uintptr_t) dpb_frames;
+    ctx.dpb_frames_ptr                      = (uintptr_t) f_u.dpb_frames;
     ctx.dpb_ref_frames_with_earlier_poc_nb  = ref_frames_with_earlier_poc_num;
     ctx.baseline_profile                    = dec->is_baseline_profile;
     ctx.level_idc                           = tegra_level_idc(51);
@@ -448,13 +455,66 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
     ctx.pic_order_present_flag              = info->pic_order_present_flag;
     ctx.num_ref_idx_l0_active_minus1        = info->num_ref_idx_l0_active_minus1;
     ctx.num_ref_idx_l1_active_minus1        = info->num_ref_idx_l1_active_minus1;
-    ctx.reserved                            = 0;
+
+    memset(&ctx.reserved, 0, sizeof(ctx.reserved));
+
+to_v1:
+    if (dec->v1) {
+        struct tegra_vde_h264_frame f;
+
+        for (i = 0; i < ctx.dpb_frames_nb; i++) {
+            f = f_u.dpb_frames[i];
+
+            f_u.dpb_frames_v1[i].y_fd = f.y_fd;
+            f_u.dpb_frames_v1[i].cb_fd = f.cb_fd;
+            f_u.dpb_frames_v1[i].cr_fd = f.cr_fd;
+            f_u.dpb_frames_v1[i].aux_fd = f.aux_fd;
+            f_u.dpb_frames_v1[i].y_offset = f.y_offset;
+            f_u.dpb_frames_v1[i].cb_offset = f.cb_offset;
+            f_u.dpb_frames_v1[i].cr_offset = f.cr_offset;
+            f_u.dpb_frames_v1[i].aux_offset = f.aux_offset;
+            f_u.dpb_frames_v1[i].frame_num = f.frame_num;
+            f_u.dpb_frames_v1[i].flags = f.flags;
+            f_u.dpb_frames_v1[i].reserved = 0;
+        }
+
+        ctx_v1.bitstream_data_fd                   = ctx.bitstream_data_fd;
+        ctx_v1.bitstream_data_offset               = ctx.bitstream_data_offset;
+        ctx_v1.dpb_frames_nb                       = ctx.dpb_frames_nb;
+        ctx_v1.dpb_frames_ptr                      = ctx.dpb_frames_ptr;
+        ctx_v1.dpb_ref_frames_with_earlier_poc_nb  = ctx.dpb_ref_frames_with_earlier_poc_nb;
+        ctx_v1.baseline_profile                    = ctx.baseline_profile;
+        ctx_v1.level_idc                           = ctx.level_idc;
+        ctx_v1.log2_max_pic_order_cnt_lsb          = ctx.log2_max_pic_order_cnt_lsb;
+        ctx_v1.log2_max_frame_num                  = ctx.log2_max_frame_num;
+        ctx_v1.pic_order_cnt_type                  = ctx.pic_order_cnt_type;
+        ctx_v1.direct_8x8_inference_flag           = ctx.direct_8x8_inference_flag;
+        ctx_v1.pic_width_in_mbs                    = ctx.pic_width_in_mbs;
+        ctx_v1.pic_height_in_mbs                   = ctx.pic_height_in_mbs;
+        ctx_v1.pic_init_qp                         = ctx.pic_init_qp;
+        ctx_v1.deblocking_filter_control_present_flag = ctx.deblocking_filter_control_present_flag;
+        ctx_v1.constrained_intra_pred_flag         = ctx.constrained_intra_pred_flag;
+        ctx_v1.chroma_qp_index_offset              = ctx.chroma_qp_index_offset;
+        ctx_v1.pic_order_present_flag              = ctx.pic_order_present_flag;
+        ctx_v1.num_ref_idx_l0_active_minus1        = ctx.num_ref_idx_l0_active_minus1;
+        ctx_v1.num_ref_idx_l1_active_minus1        = ctx.num_ref_idx_l1_active_minus1;
+        ctx_v1.reserved                            = 0;
+    }
 
 repeat:
-    err = ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264, &ctx);
+    if (dec->v1)
+        err = ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264_V1, &ctx_v1);
+    else
+        err = ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264, &ctx);
+
     if (err != 0) {
         if (errno == EINTR || errno == EAGAIN) {
             goto repeat;
+        }
+        if (errno == ENOTTY && !dec->v1) {
+            DebugMsg("switching to v1 IOCTL\n");
+            dec->v1 = true;
+            goto to_v1;
         }
         return VDP_STATUS_ERROR;
     }
