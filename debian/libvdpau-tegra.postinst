@@ -5,5 +5,9 @@ set -e
 #DEBHELPER#
 
 if [ "$1" = "configure" ]; then
-	udevadm control --reload && udevadm trigger --name-match=tegra_vde
+	udevadm control --reload
+
+	if [ -e "/dev/tegra_vde" ]; then
+		udevadm trigger --name-match=tegra_vde
+	fi
 fi
