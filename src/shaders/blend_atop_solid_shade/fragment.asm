@@ -20,42 +20,27 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-pseq_to_dw_exec_nb = 3	// the number of 'EXEC' block where DW happens
+pseq_to_dw_exec_nb = 1	// the number of 'EXEC' block where DW happens
 alu_buffer_size = 1	// number of .rgba regs carried through pipeline
 
 .asm
 
 EXEC
-	MFU:	sfu:  rcp r4
-		mul0: bar, sfu, bar0
-		mul1: bar, sfu, bar1
-		ipl:  t1.fp20, t1.fp20, NOP, NOP
-
-	// sample tex1 (mask)
-	TEX:	tex r2, r3, tex0, r0, r1, r2
-;
-
-EXEC
-	MFU:	sfu:  rcp r4
-		mul0: bar, sfu, bar0
-		mul1: bar, sfu, bar1
-		ipl:  t0.fx10, t0.fx10, NOP, NOP
-
-	ALU:
-		ALU0:	MAD  r0.l, r2.l,  r0.l, #0
-		ALU1:	MAD  r0.h, r2.h,  r0.h, #0
-		ALU2:	MAD  r1.l, r3.l,  r1.l, #0
-		ALU3:	MAD  r1.h, r3.h, -r1.h, #1
-;
-
-EXEC
 	// fetch dst pixel to r2,r3
 	PSEQ:	0x0081000A
 
+	MFU:	sfu:  rcp r4
+		mul0: bar, sfu, bar0
+		mul1: bar, sfu, bar1
+		ipl:  t0.fp20, t0.fp20, NOP, NOP
+
+	// sample tex1 (mask)
+	TEX:	tex r0, r1, tex0, r0, r1, r2
+
 	ALU:
-		ALU0:	MAD  r0.l, r1.h, r2.l, r0.l
-		ALU1:	MAD  r0.h, r1.h, r2.h, r0.h
-		ALU2:	MAD  r1.l, r1.h, r3.l, r1.l
+		ALU0:	MAD  r0.l, r1.h-1, -r2.l, r0.l
+		ALU1:	MAD  r0.h, r1.h-1, -r2.h, r0.h
+		ALU2:	MAD  r1.l, r1.h-1, -r3.l, r1.l
 
 	DW:	store rt1, r0, r1
 ;

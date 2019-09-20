@@ -19,6 +19,7 @@
 
 #include "vdpau_tegra.h"
 #include "shaders/blend_atop.bin.h"
+#include "shaders/blend_atop_solid_shade.bin.h"
 
 VdpStatus vdp_output_surface_query_capabilities(
                                             VdpDevice device,
@@ -266,12 +267,17 @@ static int blend_surface(tegra_device *dev,
                 c[i][3] = colors[0].alpha;
             }
         }
-    } else {
-        for (i = 0; i < 4; i++) {
-            c[i][0] = 1.0f;
-            c[i][1] = 1.0f;
-            c[i][2] = 1.0f;
-            c[i][3] = 1.0f;
+
+        if (c[0][0] == 1.0f && c[0][1] == 1.0f &&
+            c[0][2] == 1.0f && c[0][3] == 1.0f &&
+            c[1][0] == 1.0f && c[1][1] == 1.0f &&
+            c[1][2] == 1.0f && c[1][3] == 1.0f &&
+            c[2][0] == 1.0f && c[2][1] == 1.0f &&
+            c[2][2] == 1.0f && c[2][3] == 1.0f &&
+            c[3][0] == 1.0f && c[3][1] == 1.0f &&
+            c[3][2] == 1.0f && c[3][3] == 1.0f)
+        {
+            colors = NULL;
         }
     }
 
@@ -346,7 +352,11 @@ static int blend_surface(tegra_device *dev,
 
     tegra_stream_push_setclass(stream, HOST1X_CLASS_GR3D);
 
-    host1x_gr3d_initialize(stream, &prog_blend_atop);
+    if (colors) {
+        host1x_gr3d_initialize(stream, &prog_blend_atop);
+    } else {
+        host1x_gr3d_initialize(stream, &prog_blend_atop_solid_shade);
+    }
 
     host1x_gr3d_setup_scissor(stream, 0, 0, dst_surf->width, dst_surf->height);
 
@@ -368,9 +378,11 @@ static int blend_surface(tegra_device *dev,
                                 2, 16);
 
     /* colors */
-    host1x_gr3d_setup_attribute(stream, 1, attribs_bo,
-                                4, TGR3D_ATTRIB_TYPE_FLOAT16,
-                                4, 16);
+    if (colors) {
+        host1x_gr3d_setup_attribute(stream, 1, attribs_bo,
+                                    4, TGR3D_ATTRIB_TYPE_FLOAT16,
+                                    4, 16);
+    }
 
     /* src texcoords */
     host1x_gr3d_setup_attribute(stream, 2, attribs_bo,
