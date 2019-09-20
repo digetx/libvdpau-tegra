@@ -669,6 +669,7 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
     struct drm_tegra_bo *bitstream_bo;
     bitstream_reader bitstream_reader;
     int bitstream_data_fd;
+    VdpTime time = 0;
     VdpStatus ret;
 
     if (dec == NULL || surf == NULL) {
@@ -676,6 +677,9 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
         put_decoder(dec);
         return VDP_STATUS_INVALID_HANDLE;
     }
+
+    if (tegra_vdpau_debug)
+        time = get_time();
 
     ret = copy_bitstream_to_dmabuf(dec, bitstream_buffer_count, bufs,
                                    &bitstream_bo, &bitstream_data_fd,
@@ -708,6 +712,8 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
 
     put_surface(surf);
     put_decoder(dec);
+
+    DebugMsg("waited for %llu usec\n", (get_time() - time) / 1000);
 
     return VDP_STATUS_OK;
 }

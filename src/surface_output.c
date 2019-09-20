@@ -231,9 +231,14 @@ static int blend_surface(tegra_device *dev,
     __fp16 c[4][4];
     __fp16 tmp;
     __fp16 *map = NULL;
+    VdpTime time = 0;
     unsigned attrib_itr = 0;
     unsigned i;
     int err;
+
+    if (tegra_vdpau_debug) {
+        time = get_time();
+    }
 
     dst_left   = (__fp16) (dst_x0     * 2) / dst_surf->width  - 1.0f;
     dst_right  = (__fp16) (dst_width  * 2) / dst_surf->width  + dst_left;
@@ -402,6 +407,8 @@ static int blend_surface(tegra_device *dev,
 
 out_unref:
     drm_tegra_bo_unref(attribs_bo);
+
+    DebugMsg("waited for %llu usec\n", (get_time() - time) / 1000);
 
     return err;
 }

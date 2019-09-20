@@ -41,6 +41,7 @@ int host1x_gr2d_clear_rect(struct tegra_stream *stream,
                            unsigned x, unsigned y,
                            unsigned width, unsigned height)
 {
+    VdpTime time = 0;
     unsigned tiled = 0;
     int err;
 
@@ -49,6 +50,9 @@ int host1x_gr2d_clear_rect(struct tegra_stream *stream,
 
     DebugMsg("pixbuf width %u height %u color 0x%08X x %u y %u width %u height %u\n",
              pixbuf->width, pixbuf->height, color, x, y, width, height);
+
+    if (tegra_vdpau_debug)
+        time = get_time();
 
     if (x + width > pixbuf->width)
         return -EINVAL;
@@ -102,6 +106,8 @@ int host1x_gr2d_clear_rect(struct tegra_stream *stream,
 
     host1x_pixelbuffer_check_guard(pixbuf);
 
+    DebugMsg("waited for %llu usec\n", (get_time() - time) / 1000);
+
     return 0;
 }
 
@@ -114,6 +120,7 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
                                    unsigned clip_x1, unsigned clip_y1,
                                    bool draw_outside)
 {
+    VdpTime time = 0;
     unsigned tiled = 0;
     int err;
 
@@ -125,6 +132,9 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
              " draw_outside %d\n",
              pixbuf->width, pixbuf->height, color, x, y,
              width, height, clip_x0, clip_y0, clip_x1, clip_y1, draw_outside);
+
+    if (tegra_vdpau_debug)
+        time = get_time();
 
     if (x + width > pixbuf->width)
         return -EINVAL;
@@ -200,6 +210,8 @@ int host1x_gr2d_clear_rect_clipped(struct tegra_stream *stream,
 
     host1x_pixelbuffer_check_guard(pixbuf);
 
+    DebugMsg("waited for %llu usec\n", (get_time() - time) / 1000);
+
     return 0;
 }
 
@@ -246,6 +258,7 @@ int host1x_gr2d_blit(struct tegra_stream *stream,
                      unsigned int dx, unsigned int dy,
                      unsigned int width, int height)
 {
+    VdpTime time = 0;
     unsigned src_tiled = 0;
     unsigned dst_tiled = 0;
     unsigned yflip = 0;
@@ -272,6 +285,9 @@ int host1x_gr2d_blit(struct tegra_stream *stream,
              src->width, src->height, src->format,
              dst->width, dst->height, dst->format,
              sx, sy, dx, dy, width, height, rotate);
+
+    if (tegra_vdpau_debug)
+        time = get_time();
 
     if (PIX_BUF_FORMAT_BYTES(src->format) !=
         PIX_BUF_FORMAT_BYTES(dst->format))
@@ -434,6 +450,8 @@ yflip_setup:
 
     host1x_pixelbuffer_check_guard(dst);
 
+    DebugMsg("waited for %llu usec\n", (get_time() - time) / 1000);
+
     return 0;
 }
 
@@ -446,6 +464,7 @@ int host1x_gr2d_surface_blit(struct tegra_stream *stream,
                              unsigned int dx, unsigned int dy,
                              unsigned int dst_width, int dst_height)
 {
+    VdpTime time = 0;
     float inv_scale_x;
     float inv_scale_y;
     unsigned src_tiled = 0;
@@ -473,6 +492,9 @@ int host1x_gr2d_surface_blit(struct tegra_stream *stream,
              dst->width, dst->height, dst->format,
              sx, sy, src_width, src_height,
              dx, dy, dst_width, dst_height);
+
+    if (tegra_vdpau_debug)
+        time = get_time();
 
     switch (src->layout) {
     case PIX_BUF_LAYOUT_TILED_16x16:
@@ -688,6 +710,8 @@ coords_check:
         return err;
 
     host1x_pixelbuffer_check_guard(dst);
+
+    DebugMsg("waited for %llu usec\n", (get_time() - time) / 1000);
 
     return 0;
 }
