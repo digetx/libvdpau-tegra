@@ -51,12 +51,14 @@ bool tegra_check_xv_atom(tegra_device *dev, char const *atom_name)
     XvAttribute *attributes;
     int count = 0, i;
 
+    DebugMsg("looking up %s\n", atom_name);
+
     attributes = XvQueryPortAttributes(dev->display, dev->xv_port, &count);
     if (attributes == NULL || !count)
         return false;
 
     for (i = 0; i < count; i++) {
-        DebugMsg("attributes[%d].name = %s %s\n",
+        DebugMsg("\tattributes[%d].name = %s %s\n",
                  i, attributes[i].name, atom_name);
 
         if (strcmp(attributes[i].name, atom_name) == 0)
