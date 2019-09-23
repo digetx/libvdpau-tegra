@@ -741,51 +741,33 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     struct drm_tegra_channel *gr2d = NULL;
     VdpDevice i;
     drm_magic_t magic;
+    bool xv_supports_rotation = false;
     bool disp_composited = false;
     bool disp_rotated = false;
     bool dri_failed;
-    char *debug_str;
+    char *env_str;
     int vde_fd = -1;
     int drm_fd = -1;
     int ret;
 
-    debug_str = getenv("VDPAU_TEGRA_DEBUG");
-    if (debug_str && strcmp(debug_str, "0")) {
+    env_str = getenv("VDPAU_TEGRA_DEBUG");
+    if (env_str && strcmp(env_str, "0")) {
         tegra_vdpau_debug = true;
     }
 
-    debug_str = getenv("VDPAU_TEGRA_FORCE_XV");
-    if (debug_str && strcmp(debug_str, "0")) {
+    env_str = getenv("VDPAU_TEGRA_FORCE_XV");
+    if (env_str && strcmp(env_str, "0")) {
         tegra_vdpau_force_xv = true;
     }
 
-    debug_str = getenv("VDPAU_TEGRA_FORCE_XV_V1");
-    if (debug_str && strcmp(debug_str, "0")) {
+    env_str = getenv("VDPAU_TEGRA_FORCE_XV_V1");
+    if (env_str && strcmp(env_str, "0")) {
         tegra_vdpau_force_xv_v1 = true;
     }
 
-    debug_str = getenv("VDPAU_TEGRA_FORCE_DRI");
-    if (debug_str && strcmp(debug_str, "0")) {
+    env_str = getenv("VDPAU_TEGRA_FORCE_DRI");
+    if (env_str && strcmp(env_str, "0")) {
         tegra_vdpau_force_dri = true;
-    }
-
-    debug_str = getenv("VDPAU_TEGRA_DRI_XV_AUTOSWITCH");
-    if (debug_str && strcmp(debug_str, "0")) {
-        tegra_vdpau_dri_xv_autoswitch = true;
-
-    } else if (!(tegra_vdpau_force_xv || tegra_vdpau_force_dri)) {
-        disp_composited = x11_screen_is_composited(display, screen);
-        disp_rotated = xrandr_screen_is_rotated(display, screen);
-
-        if (!disp_composited && !disp_rotated) {
-            DebugMsg("Compositor/rotation undetected, enabling DRI<->Xv autoswitch\n");
-            tegra_vdpau_dri_xv_autoswitch = true;
-        } else {
-            InfoMsg("Compositor detected %d display rotated %d, defaulting to DRI output (use Xv to avoid tearing), see "
-                    "https://github.com/grate-driver/libvdpau-tegra/blob/master/README.md#environment-variables\n",
-                    disp_composited, disp_rotated);
-            tegra_vdpau_force_dri = true;
-        }
     }
 
     drm_fd = drmOpen("tegra", NULL);
@@ -868,6 +850,32 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
 
         if (!tegra_vdpau_force_dri) {
             ErrorMsg("forcing DRI\n");
+            tegra_vdpau_force_dri = true;
+        }
+    } else {
+        xv_supports_rotation = tegra_check_xv_atom(tegra_devices[i],
+                                                   "XV_SUPPORTS_DISP_ROTATION");
+        if (xv_supports_rotation)
+            DebugMsg("Xv supports rotation\n");
+        else
+            DebugMsg("Xv doesn't support rotation\n");
+    }
+
+    env_str = getenv("VDPAU_TEGRA_DRI_XV_AUTOSWITCH");
+    if (env_str && strcmp(env_str, "0")) {
+        tegra_vdpau_dri_xv_autoswitch = true;
+
+    } else if (!(tegra_vdpau_force_xv || tegra_vdpau_force_dri)) {
+        disp_composited = x11_screen_is_composited(display, screen);
+        disp_rotated = xrandr_screen_is_rotated(display, screen);
+
+        if (!disp_composited && (!disp_rotated || xv_supports_rotation)) {
+            DebugMsg("Compositor/rotation undetected, enabling DRI<->Xv autoswitch\n");
+            tegra_vdpau_dri_xv_autoswitch = true;
+        } else {
+            InfoMsg("Compositor detected %d display rotated %d xv rotation %d, defaulting to DRI output (use Xv to avoid tearing), see "
+                    "https://github.com/grate-driver/libvdpau-tegra/blob/master/README.md#environment-variables\n",
+                    disp_composited, disp_rotated, xv_supports_rotation);
             tegra_vdpau_force_dri = true;
         }
     }
