@@ -875,10 +875,9 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
             DebugMsg("Compositor/rotation undetected, enabling DRI<->Xv autoswitch\n");
             tegra_vdpau_dri_xv_autoswitch = true;
         } else {
-            InfoMsg("Compositor detected %d display rotated %d xv rotation %d, defaulting to DRI output (use Xv to avoid tearing), see "
+            InfoMsg("Compositor detected %d display rotated %d xv rotation %d, see "
                     "https://github.com/grate-driver/libvdpau-tegra/blob/master/README.md#environment-variables\n",
                     disp_composited, disp_rotated, xv_supports_rotation);
-            tegra_vdpau_force_dri = true;
         }
     }
 
