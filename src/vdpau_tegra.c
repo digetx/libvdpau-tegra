@@ -772,7 +772,7 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
         tegra_vdpau_force_dri = true;
     }
 
-    drm_fd = drmOpen("tegra", NULL);
+    drm_fd = drmOpen("tegra", "drm");
     if (drm_fd < 0) {
         perror("Failed to open tegra DRM\n");
         goto err_cleanup;
