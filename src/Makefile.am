@@ -1,6 +1,10 @@
+AUTOMAKE_OPTIONS=subdir-objects
+
 AM_CFLAGS = -Wall -pthread -mfp16-format=ieee \
 	    $(X11_CFLAGS) $(PIXMAN_CFLAGS) $(DRM_CFLAGS) $(XV_CFLAGS) \
-	    $(CFLAG_VISIBILITY)
+	    $(CFLAG_VISIBILITY) $(VALGRIND_CFLAGS) $(DEFINES)
+
+AM_CFLAGS += -I$(srcdir)/tegradrm
 
 vdpau_tegra_libdir = $(libdir)/vdpau
 vdpau_tegra_lib_LTLIBRARIES = libvdpau_tegra.la
@@ -20,7 +24,8 @@ libvdpau_tegra_la_SOURCES = vdpau_tegra.c \
                             bitstream.c \
                             host1x-gr2d.c \
                             host1x-pixelbuffer.c \
-                            tegra_stream.c \
+                            tegra_stream_v1.c \
+                            tegra_stream_v2.c \
                             dri2.c \
                             shaders/prog.h \
                             $(shaders_gen) \
@@ -28,6 +33,19 @@ libvdpau_tegra_la_SOURCES = vdpau_tegra.c \
                             shaders.h \
                             host1x-gr3d.c \
                             host1x-gr3d.h
+
+libvdpau_tegra_la_SOURCES += tegradrm/atomic.h \
+                             tegradrm/lists.h \
+                             tegradrm/opentegra_drm.h \
+                             tegradrm/opentegra_lib.h \
+                             tegradrm/private.h \
+                             tegradrm/tegra.c \
+                             tegradrm/tegra_bo_cache.c \
+                             tegradrm/uapi_v1/channel.c \
+                             tegradrm/uapi_v1/fence.c \
+                             tegradrm/uapi_v1/job.c \
+                             tegradrm/uapi_v1/pushbuf.c \
+                             tegradrm/uapi_v2/job.c
 
 libvdpau_tegra_la_LDFLAGS = -version-info 1:0:0 -module -Wl,-z,defs
 libvdpau_tegra_la_LIBADD  = -lm $(X11_LIBS) $(PIXMAN_LIBS) $(DRM_LIBS) $(XV_LIBS)

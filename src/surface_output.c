@@ -225,7 +225,7 @@ static int blend_surface(tegra_device *dev,
                          VdpColor const *colors,
                          uint32_t flags)
 {
-    struct tegra_stream *stream = &dst_surf->stream_3d;
+    struct tegra_stream *stream = dst_surf->stream_3d;
     struct drm_tegra_bo *attribs_bo;
     __fp16 dst_left, dst_right, dst_top, dst_bottom;
     __fp16 src_left, src_right, src_top, src_bottom;
@@ -410,7 +410,7 @@ static int blend_surface(tegra_device *dev,
         goto out_unref;
     }
 
-    err = tegra_stream_flush(stream, false);
+    err = tegra_stream_flush(stream);
     if (err) {
         goto out_unref;
     }
@@ -582,7 +582,7 @@ out_1:
     }
 
     if (src_surf == NULL) {
-        ret = host1x_gr2d_clear_rect(&dst_surf->stream_2d,
+        ret = host1x_gr2d_clear_rect(dst_surf->stream_2d,
                                      dst_surf->pixbuf,
                                      clear_color,
                                      dst_x0, dst_y0,
@@ -709,7 +709,7 @@ out_1:
                     unref_shared_surface(shared);
                 }
             } else {
-                ret = host1x_gr2d_surface_blit(&dst_surf->stream_2d,
+                ret = host1x_gr2d_surface_blit(dst_surf->stream_2d,
                                                src_surf->pixbuf,
                                                dst_surf->pixbuf,
                                                &csc_rgb_default,

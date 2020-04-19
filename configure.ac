@@ -31,7 +31,7 @@ PKG_CHECK_MODULES(PIXMAN, pixman-1)
 AC_SUBST(PIXMAN_CFLAGS)
 AC_SUBST(PIXMAN_LIBS)
 
-PKG_CHECK_MODULES(DRM, [libdrm libdrm_tegra >= 2.4.81])
+PKG_CHECK_MODULES(DRM, [libdrm >= 2.4.81])
 AC_SUBST(DRM_CFLAGS)
 AC_SUBST(DRM_LIBS)
 
@@ -70,6 +70,78 @@ AC_CHECK_PROGS(YACC, 'bison -y' byacc yacc, :)
 if test "$YACC" = :; then
 	AC_MSG_ERROR([bison not found])
 fi
+
+SAVE_CFLAGS=$CFLAGS
+SAVE_LIBS=$LIBS
+CFLAGS=$DRM_CFLAGS
+LIBS=$DRM_LIBS
+
+AC_CHECK_FUNCS(
+	[drmSyncobjCreate],
+	[
+		AC_MSG_RESULT([yes])
+		AC_DEFINE(HAVE_LIBDRM_SYNCOBJ_SUPPORT, [], [Does libdrm have drmSyncobjCreate])
+	],
+	[
+		AC_MSG_RESULT([no])
+	])
+
+CFLAGS=$SAVE_CFLAGS
+LIBS=$SAVE_LIBS
+
+AC_ARG_ENABLE(valgrind,
+	      [AS_HELP_STRING([--enable-valgrind],
+	      [Build libdrm with  valgrind support (default: auto)])],
+	      [VALGRIND=$enableval], [VALGRIND=auto])
+if test "x$VALGRIND" != xno; then
+	PKG_CHECK_MODULES(VALGRIND, [valgrind], [have_valgrind=yes], [have_valgrind=no])
+fi
+AC_MSG_CHECKING([whether to enable Valgrind support])
+if test "x$VALGRIND" = xauto; then
+	VALGRIND="$have_valgrind"
+fi
+
+if test "x$VALGRIND" = "xyes"; then
+	if ! test "x$have_valgrind" = xyes; then
+		AC_MSG_ERROR([Valgrind support required but not present])
+	fi
+	AC_DEFINE([HAVE_VALGRIND], 1, [Use valgrind intrinsics to suppress false warnings])
+else
+	AC_DEFINE([HAVE_VALGRIND], 0)
+fi
+
+AC_MSG_RESULT([$VALGRIND])
+
+AC_ARG_ENABLE([debug],
+	      [AS_HELP_STRING([--enable-debug],
+	      [use debug compiler flags and macros @<:@default=disabled@:>@])],
+	      [enable_debug="$enableval"],
+	      [enable_debug=no]
+)
+
+if test "x$enable_debug" = xyes; then
+	DEFINES="$DEFINES -DDEBUG"
+	if test "x$GCC" = xyes; then
+		if ! echo "$CFLAGS" | grep -q -e '-g'; then
+			CFLAGS="$CFLAGS -g"
+		fi
+		if ! echo "$CFLAGS" | grep -q -e '-O'; then
+			CFLAGS="$CFLAGS -O0"
+		fi
+	fi
+	if test "x$GXX" = xyes; then
+		if ! echo "$CXXFLAGS" | grep -q -e '-g'; then
+			CXXFLAGS="$CXXFLAGS -g"
+		fi
+		if ! echo "$CXXFLAGS" | grep -q -e '-O'; then
+			CXXFLAGS="$CXXFLAGS -O0"
+		fi
+	fi
+else
+	DEFINES="$DEFINES -DNDEBUG"
+fi
+
+AC_SUBST([DEFINES])
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile

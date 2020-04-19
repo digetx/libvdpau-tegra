@@ -43,8 +43,6 @@
 #include <pixman.h>
 #include <vdpau/vdpau_x11.h>
 
-#include <libdrm/tegra_drm.h>
-#include <libdrm/tegra.h>
 #include <xf86drm.h>
 
 #define NEED_REPLIES
@@ -60,12 +58,16 @@
 #include <X11/extensions/Xrandr.h>
 #include <X11/extensions/Xvlib.h>
 
+#include "opentegra_drm.h"
+#include "opentegra_lib.h"
+
 #include "atomic.h"
 #include "dri2.h"
 #include "bitstream.h"
 #include "tegra_stream.h"
 #include "shaders/prog.h"
 #include "host1x.h"
+#include "host1x-api.h"
 #include "tgr_3d.xml.h"
 #include "util_double_list.h"
 #include "uapi/dma-buf.h"
@@ -105,6 +107,14 @@
 #define FOURCC_PASSTHROUGH_XBGR8888_V2 (('T' << 24) + ('G' << 16) + ('R' << 8) + '4')
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+
+#define CONTAINER_OFFSETOF(TYPE, MEMBER) \
+    ((size_t) &((TYPE *)0)->MEMBER)
+
+#define CONTAINER_OF(ptr, type, member) ({                                  \
+        const typeof(((type *)0)->member) *__mptr = (ptr);                  \
+        (type *)((char *)__mptr - CONTAINER_OFFSETOF(type, member));  \
+    })
 
 #define __align_mask(value, mask)  (((value) + (mask)) & ~(mask))
 #define ALIGN(value, alignment)    __align_mask(value, (typeof(value))((alignment) - 1))
@@ -227,8 +237,8 @@ typedef struct tegra_shared_surface {
 
 typedef struct tegra_surface {
     tegra_device *dev;
-    struct tegra_stream stream_3d;
-    struct tegra_stream stream_2d;
+    struct tegra_stream *stream_3d;
+    struct tegra_stream *stream_2d;
 
     bool destroyed;
 

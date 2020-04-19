@@ -96,7 +96,7 @@ int rotate_surface_gr2d(tegra_surface *src_surf,
     src    = src_surf->pixbuf;
     dst    = dst_surf->pixbuf;
     dev    = dst_surf->dev;
-    stream = &dst_surf->stream_2d;
+    stream = dst_surf->stream_2d;
 
     if (pre_rot_width * pre_rot_height > src_width * src_height)
         downscale = false;
