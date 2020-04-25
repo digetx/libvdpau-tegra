@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.69])
+AC_PREREQ([2.60])
 AC_INIT([libvdpau_tegra], [1.0.0], [digetx@gmail.com])
 AC_CONFIG_SRCDIR([src/vdpau_tegra.c])
 AC_CONFIG_HEADERS([config.h])
