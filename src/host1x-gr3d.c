@@ -29,11 +29,6 @@ static void host1x_gr3d_init_state(struct tegra_stream *cmds)
 
     /* Tegra30 specific stuff */
 
-    tegra_stream_prep(cmds, 17);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x750, 16));
-    for (i = 0; i < 16; i++)
-        tegra_stream_push(cmds, 0x00000000);
-
     tegra_stream_prep(cmds, 6);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x907, 5));
     for (i = 0; i < 5; i++)
@@ -43,6 +38,11 @@ static void host1x_gr3d_init_state(struct tegra_stream *cmds)
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0xb00, 2));
     tegra_stream_push(cmds, 0x00000003);
     tegra_stream_push(cmds, 0x00000000);
+
+    tegra_stream_prep(cmds, 17);
+    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x750, 16));
+    for (i = 0; i < 16; i++)
+        tegra_stream_push(cmds, 0x00000000);
 
     tegra_stream_prep(cmds, 1);
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xb04, 0x00000000));
