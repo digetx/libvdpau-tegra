@@ -80,6 +80,8 @@
 #define EXPORTED
 #endif
 
+#define GRATE_KERNEL_DRM_VERSION            99991
+
 #define TEGRA_VDPAU_INTERFACE_VERSION 1
 
 #define MAX_DEVICES_NB                      1

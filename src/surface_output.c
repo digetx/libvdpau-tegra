@@ -234,7 +234,9 @@ static int blend_surface(tegra_device *dev,
     __fp16 *map = NULL;
     VdpTime time = 0;
     unsigned attrib_itr = 0;
+    uint32_t bo_flags = 0;
     unsigned i;
+    int drm_ver;
     int err;
 
     if (tegra_vdpau_debug) {
@@ -297,7 +299,17 @@ static int blend_surface(tegra_device *dev,
         return -EINVAL;
     }
 
-    err = drm_tegra_bo_new(&attribs_bo, dev->drm, 0, 4096);
+    drm_ver = drm_tegra_version(dev->drm);
+
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION)
+        bo_flags |= DRM_TEGRA_GEM_CREATE_DONT_KMAP;
+
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION + 1) {
+        /* version 0 is bugged, enable this feature only for 1+ */
+        bo_flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
+    }
+
+    err = drm_tegra_bo_new(&attribs_bo, dev->drm, bo_flags, 4096);
     if (err) {
         return err;
     }

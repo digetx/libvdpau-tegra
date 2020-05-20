@@ -42,11 +42,14 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
     uint32_t flags = 0;
     uint32_t uv_size;
     uint32_t bo_size;
+    int drm_ver;
     int ret;
 
     pixbuf = calloc(1, sizeof(*pixbuf));
     if (!pixbuf)
         return NULL;
+
+    drm_ver = drm_tegra_version(drm);
 
     pixbuf->pitch = ALIGN(pitch, 16);
     pixbuf->pitch_uv = ALIGN(pitch_uv, 16);
@@ -60,10 +63,18 @@ struct host1x_pixelbuffer *host1x_pixelbuffer_create(struct drm_tegra *drm,
         goto error_cleanup;
     }
 
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION)
+        flags |= DRM_TEGRA_GEM_CREATE_DONT_KMAP;
+
     if (format == PIX_BUF_FMT_YV12) {
         if (width * PIX_BUF_FORMAT_BYTES(format) / 2 > pitch_uv) {
             host1x_error("Invalid UV pitch\n");
             goto error_cleanup;
+        }
+    } else {
+        if (drm_ver >= GRATE_KERNEL_DRM_VERSION + 1) {
+            /* version 0 is bugged, enable this feature only for 1+ */
+            flags |= DRM_TEGRA_GEM_CREATE_SPARSE;
         }
     }
 

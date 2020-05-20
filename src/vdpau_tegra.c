@@ -898,6 +898,7 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     char *env_str;
     int vde_fd = -1;
     int drm_fd = -1;
+    int drm_ver;
     int ret;
 
     env_str = getenv("VDPAU_TEGRA_DEBUG");
@@ -951,6 +952,9 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
         ErrorMsg("Tegra DRM not detected\n");
         goto err_cleanup;
     }
+
+    drm_ver = drm_tegra_version(drm);
+    DebugMsg("Tegra DRM kernel version %d\n", drm_ver);
 
     ret = drm_tegra_channel_open(&gr3d, drm, DRM_TEGRA_GR3D);
     if (ret < 0) {

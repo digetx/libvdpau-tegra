@@ -236,7 +236,9 @@ int alloc_surface_data(tegra_surface *surf)
     struct host1x_pixelbuffer *pixbuf   = NULL;
     uint32_t *bo_flinks                 = NULL;
     uint32_t *pitches                   = NULL;
+    uint32_t bo_flags                   = 0;
     uint32_t size;
+    int drm_ver;
     int ret;
 
     if (!video) {
@@ -296,6 +298,11 @@ int alloc_surface_data(tegra_surface *surf)
             goto err_cleanup;
         }
 
+        drm_ver = drm_tegra_version(dev->drm);
+
+        if (drm_ver >= GRATE_KERNEL_DRM_VERSION)
+            bo_flags |= DRM_TEGRA_GEM_CREATE_DONT_KMAP;
+
         surf->y_bo  = pixbuf->bos[0];
         surf->cb_bo = pixbuf->bos[1];
         surf->cr_bo = pixbuf->bos[2];
@@ -340,7 +347,7 @@ int alloc_surface_data(tegra_surface *surf)
 
         size = ALIGN(width, 32) * ALIGN(height, 16) / 4;
 
-        ret = drm_tegra_bo_new(&surf->aux_bo, dev->drm, 0, ALIGN(size, 256));
+        ret = drm_tegra_bo_new(&surf->aux_bo, dev->drm, bo_flags, ALIGN(size, 256));
         if (ret) {
             ErrorMsg("drm_tegra_bo_new failed %d (%s)\n",
                      ret, strerror(-ret));

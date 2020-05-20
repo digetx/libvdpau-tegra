@@ -51,9 +51,16 @@ static struct drm_tegra_bo *alloc_data(tegra_decoder *dec, void **map,
                                        int *dmabuf_fd, uint32_t size)
 {
     struct drm_tegra_bo *bo;
+    uint32_t bo_flags = 0;
+    int drm_ver;
     int ret;
 
-    ret = drm_tegra_bo_new(&bo, dec->dev->drm, 0, size);
+    drm_ver = drm_tegra_version(dec->dev->drm);
+
+    if (drm_ver >= GRATE_KERNEL_DRM_VERSION)
+        bo_flags |= DRM_TEGRA_GEM_CREATE_DONT_KMAP;
+
+    ret = drm_tegra_bo_new(&bo, dec->dev->drm, bo_flags, size);
 
     if (ret < 0) {
         return NULL;
