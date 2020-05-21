@@ -390,6 +390,7 @@ int grate_stream_create_v2(struct tegra_stream **pstream,
 {
     struct tegra_stream_v2 *stream_v2;
     struct tegra_stream *stream;
+    static bool msg_shown = false;
     int ret;
 
 #ifndef HAVE_LIBDRM_SYNCOBJ_SUPPORT
@@ -404,9 +405,12 @@ int grate_stream_create_v2(struct tegra_stream **pstream,
     }
 
     /* this is experimental grate-kernel UAPI version */
-    if (ret != 99991) {
-        DebugMsg("GRATE DRM v2 API unsupported by kernel driver\n");
-        DebugMsg("https://github.com/grate-driver/linux\n");
+    if (ret < GRATE_KERNEL_DRM_VERSION) {
+        if (!msg_shown) {
+            DebugMsg("GRATE DRM v2 API unsupported by kernel driver\n");
+            DebugMsg("https://github.com/grate-driver/linux\n");
+            msg_shown = true;
+        }
         return -1;
     }
 
