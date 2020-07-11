@@ -16,7 +16,6 @@ AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_LIBTOOL
 PKG_PROG_PKG_CONFIG
-gl_VISIBILITY
 
 # Checks for dependencies.
 PKG_CHECK_MODULES(X11, x11 xext xextproto xfixes xrandr)

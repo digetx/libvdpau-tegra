@@ -74,11 +74,7 @@
 #include "uapi/tegra-vde.h"
 #include "uapi/tegra-vde-v1.h"
 
-#if HAVE_VISIBILITY
 #define EXPORTED __attribute__((__visibility__("default")))
-#else
-#define EXPORTED
-#endif
 
 #define GRATE_KERNEL_DRM_VERSION            99991
 

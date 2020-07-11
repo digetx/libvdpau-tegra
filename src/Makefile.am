@@ -2,9 +2,9 @@ AUTOMAKE_OPTIONS=subdir-objects
 
 AM_CFLAGS = -Wall -pthread -mfp16-format=ieee \
 	    $(X11_CFLAGS) $(PIXMAN_CFLAGS) $(DRM_CFLAGS) $(XV_CFLAGS) \
-	    $(CFLAG_VISIBILITY) $(VALGRIND_CFLAGS) $(DEFINES)
+	    $(VALGRIND_CFLAGS) $(DEFINES)
 
-AM_CFLAGS += -I$(srcdir)/tegradrm
+AM_CFLAGS += -I$(srcdir)/tegradrm -fvisibility=hidden
 
 vdpau_tegra_libdir = $(libdir)/vdpau
 vdpau_tegra_lib_LTLIBRARIES = libvdpau_tegra.la
