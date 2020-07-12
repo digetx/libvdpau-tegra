@@ -417,7 +417,7 @@ void set_presentation_queue_target(VdpPresentationQueueTarget target,
                                    tegra_pqt *pqt);
 void pqt_display_surface_to_idle_state(tegra_pqt *pqt);
 void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf,
-                         bool update_status, bool transit);
+                         bool update_status, bool transit, bool vsync);
 void pqt_prepare_dri_surface(tegra_pqt *pqt, tegra_surface *surf);
 
 tegra_pq * __get_presentation_queue(VdpPresentationQueue presentation_queue);

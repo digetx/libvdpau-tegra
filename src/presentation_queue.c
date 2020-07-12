@@ -23,7 +23,7 @@ static void * presentation_queue_thr(void *opaque)
 {
     tegra_pq *pq = opaque;
     tegra_pqt *pqt = pq->pqt;
-    tegra_surface *surf, *tmp, *next;
+    tegra_surface *disp_surf, *surf, *tmp, *next;
     VdpTime earliest_time = UINT64_MAX;
     VdpTime time = UINT64_MAX;
     struct timespec tp;
@@ -70,6 +70,8 @@ static void * presentation_queue_thr(void *opaque)
         }
 
         earliest_time = UINT64_MAX;
+        disp_surf = NULL;
+        next = NULL;
 
         LIST_FOR_EACH_ENTRY_SAFE(surf, tmp, &pq->surf_list, list_item) {
             pthread_mutex_lock(&surf->lock);
@@ -95,13 +97,23 @@ static void * presentation_queue_thr(void *opaque)
 
             DebugMsg("displaying surface %u\n", surf->surface_id);
 
-            pqt_display_surface(pqt, surf, true, false);
+            if (disp_surf) {
+                pqt_display_surface(pqt, disp_surf, true, false, false);
+            }
+
+            disp_surf = surf;
+        }
+
+        if (disp_surf) {
+            pqt_display_surface(pqt, disp_surf, true, false, true);
         }
 
         time = earliest_time;
 
         if (time != UINT64_MAX) {
-            pqt_prepare_dri_surface(pqt, next);
+            if (next) {
+                pqt_prepare_dri_surface(pqt, next);
+            }
 
             DebugMsg("next wake on %llu\n", time);
         } else {
@@ -356,7 +368,7 @@ VdpStatus vdp_presentation_queue_display(
     surf->disp_height = clip_height ?: surf->height;
 
     if (earliest_presentation_time == 0 || !_Xglobal_lock) {
-        pqt_display_surface(pq->pqt, surf, true, false);
+        pqt_display_surface(pq->pqt, surf, true, false, true);
         goto unlock_surf;
     }
 

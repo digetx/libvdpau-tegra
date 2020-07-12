@@ -196,7 +196,7 @@ unlock:
     return dev->dri2_ready;
 }
 
-static void pqt_display_dri(tegra_pqt *pqt, tegra_surface *surf)
+static void pqt_display_dri(tegra_pqt *pqt, tegra_surface *surf, bool vsync)
 {
     tegra_device *dev = pqt->dev;
     CARD64 ust, msc, sbc;
@@ -206,7 +206,9 @@ static void pqt_display_dri(tegra_pqt *pqt, tegra_surface *surf)
 
     DRI2GetMSC(dev->display, pqt->drawable, &ust, &msc, &sbc);
     DRI2SwapBuffers(dev->display, pqt->drawable, msc + 1, 0, 0, &count);
-    DRI2WaitMSC(dev->display, pqt->drawable, msc + 1, 0, 0, &ust, &msc, &sbc);
+    if (vsync) {
+        DRI2WaitMSC(dev->display, pqt->drawable, msc + 1, 0, 0, &ust, &msc, &sbc);
+    }
 
     if (pqt->dri_prep_surf == surf) {
         pqt->dri_prep_surf = NULL;
@@ -598,7 +600,7 @@ void pqt_prepare_dri_surface(tegra_pqt *pqt, tegra_surface *surf)
 }
 
 void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf,
-                         bool update_status, bool transit)
+                         bool update_status, bool transit, bool vsync)
 {
     tegra_device *dev = pqt->dev;
 
@@ -618,13 +620,13 @@ void pqt_display_surface(tegra_pqt *pqt, tegra_surface *surf,
         dev->dri2_ready)
     {
         pqt_update_dri_buffer(pqt, surf);
-        pqt_display_dri(pqt, surf);
+        pqt_display_dri(pqt, surf, vsync);
 
         if (transit || pqt->disp_state != TEGRA_PQT_DRI) {
             transit_display_to_dri(pqt);
         }
     } else {
-        pqt_display_xv(pqt, surf, update_status);
+        pqt_display_xv(pqt, surf, vsync);
 
         if (transit || pqt->disp_state != TEGRA_PQT_XV) {
             transit_display_to_xv(pqt);
@@ -671,14 +673,14 @@ static void * pqt_display_thr(void *opaque)
             pqt->overlapped_current = overlapped;
 
             if (pqt->disp_surf) {
-                pqt_display_surface(pqt, pqt->disp_surf, false, true);
+                pqt_display_surface(pqt, pqt->disp_surf, false, true, false);
             }
         }
         if (pqt->win_move) {
             pqt->win_move = false;
 
             if (pqt->disp_surf) {
-                pqt_display_surface(pqt, pqt->disp_surf, false, false);
+                pqt_display_surface(pqt, pqt->disp_surf, false, false, false);
             }
         }
         pthread_mutex_unlock(&pqt->lock);
