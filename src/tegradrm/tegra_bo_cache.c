@@ -131,12 +131,16 @@ void drm_tegra_bo_cache_cleanup(struct drm_tegra *drm, time_t time)
 
 			delta = time - bo->free_time;
 
-			/* keep things in cache for at least 1 second: */
-			if (time && delta <= 1)
+			/* keep things in cache for at least 30 second: */
+			if (time && delta <= 30)
 				break;
 
 			/* keep things in cache longer if not much */
 			if (time && delta < 60 && bucket->num_entries < 5)
+				break;
+
+			if (time && delta < 300 &&
+			    bucket->size * bucket->num_entries < 4 * 1024 * 1024)
 				break;
 
 			VG_BO_OBTAIN(bo);
@@ -193,7 +197,7 @@ static bool is_idle(struct drm_tegra_bo *bo)
 }
 
 static struct drm_tegra_bo *find_in_bucket(struct drm_tegra_bo_bucket *bucket,
-					   uint32_t flags)
+					   uint32_t flags, uint32_t size)
 {
 	struct drm_tegra_bo *bo = NULL;
 
@@ -207,6 +211,7 @@ static struct drm_tegra_bo *find_in_bucket(struct drm_tegra_bo_bucket *bucket,
 	if (!DRMLISTEMPTY(&bucket->list)) {
 		bo = DRMLISTENTRY(struct drm_tegra_bo, bucket->list.next,
 				  bo_list);
+
 		/* TODO check for compatible flags? */
 		if (is_idle(bo)) {
 			DRMLISTDELINIT(&bo->bo_list);
@@ -267,8 +272,7 @@ drm_tegra_bo_cache_alloc(struct drm_tegra *drm,
 
 	/* see if we can be green and recycle: */
 	if (bucket) {
-		*size = bucket->size;
-		bo = find_in_bucket(bucket, flags);
+		bo = find_in_bucket(bucket, flags, *size);
 		if (bo) {
 			drm_tegra_reset_bo(bo, flags, false);
 
@@ -341,8 +345,8 @@ drm_tegra_bo_mmap_cache_cleanup(struct drm_tegra *drm,
 
 		delta = time - bo->unmap_time;
 
-		/* keep things in cache for at least 3 seconds: */
-		if (time && delta <= 3)
+		/* keep things in cache for at least 30 seconds: */
+		if (time && delta <= 30)
 			break;
 
 		if (time) {
