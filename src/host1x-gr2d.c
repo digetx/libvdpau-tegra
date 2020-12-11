@@ -612,8 +612,8 @@ coords_check:
         vftype = 0;
         vfen = 1;
 
-        src_height -= 2;
-        dst_height -= 2;
+        src_height -= 1;
+        dst_height -= 1;
     }
 
     src_height = max(src_height, 0);
