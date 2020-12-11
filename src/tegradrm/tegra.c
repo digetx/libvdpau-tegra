@@ -358,6 +358,7 @@ int drm_tegra_bo_new(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 {
 	struct drm_tegra_gem_create args;
 	struct drm_tegra_bo *bo;
+	bool retried = false;
 	int err;
 
 	if (!drm || size == 0 || !bop)
@@ -397,9 +398,16 @@ int drm_tegra_bo_new(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 	if (drm->debug_bo_back_guard)
 		args.size += 4096;
 #endif
+retry:
 	err = drmCommandWriteRead(drm->fd, DRM_TEGRA_GEM_CREATE, &args,
 				  sizeof(args));
 	if (err < 0) {
+		if (!retried) {
+			drm_tegra_bo_cache_cleanup(drm, 0);
+			retried = true;
+			goto retry;
+		}
+
 		VDBG_DRM(drm, "failed size %u bytes flags 0x%08X err %d (%s)\n",
 			 size, flags, err, strerror(-err));
 		free(bo);
