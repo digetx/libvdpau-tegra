@@ -197,7 +197,7 @@ static bool is_idle(struct drm_tegra_bo *bo)
 }
 
 static struct drm_tegra_bo *find_in_bucket(struct drm_tegra_bo_bucket *bucket,
-					   uint32_t flags, uint32_t size)
+					   uint32_t flags)
 {
 	struct drm_tegra_bo *bo = NULL;
 
@@ -272,7 +272,8 @@ drm_tegra_bo_cache_alloc(struct drm_tegra *drm,
 
 	/* see if we can be green and recycle: */
 	if (bucket) {
-		bo = find_in_bucket(bucket, flags, *size);
+		*size = bucket->size;
+		bo = find_in_bucket(bucket, flags);
 		if (bo) {
 			drm_tegra_reset_bo(bo, flags, false);
 
