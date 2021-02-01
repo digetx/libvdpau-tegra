@@ -63,14 +63,15 @@
 	if (DRM->debug_bo)						\
 		fprintf(stderr,						\
 			"%s: %d:\tstats: "				\
-			"total BO's allocated %d (%d bytes, "		\
-						 "%d BO's cached) "	\
-			"total BO's mapped %d (%d pages, "		\
-					      "%d pages cached of %d BO's)\n", \
+			"total BOs allocated %d (%dKB, "		\
+						 "%d BOs cached %dKB) "	\
+			"total BOs mapped %d (%d pages, "		\
+					      "%d pages cached of %d BOs)\n", \
 			__func__, __LINE__,				\
 			 drm->debug_bos_allocated,			\
-			 drm->debug_bos_total_size,			\
+			 drm->debug_bos_total_size / 1000,		\
 			 drm->debug_bos_cached,				\
+			 drm->debug_bos_cached_size / 1000,		\
 			 drm->debug_bos_mapped,				\
 			 drm->debug_bos_total_pages,			\
 			 drm->debug_bos_cached_pages,			\
@@ -110,10 +111,11 @@ struct drm_tegra_bo_bucket {
 	drmMMListHead list;
 	uint32_t num_entries;
 	uint32_t num_mmap_entries;
+	bool sparse;
 };
 
 struct drm_tegra_bo_cache {
-	struct drm_tegra_bo_bucket cache_bucket[14 * 4];
+	struct drm_tegra_bo_bucket cache_bucket[14 * 4 * 2];
 	int num_buckets;
 	time_t time;
 };
@@ -149,6 +151,7 @@ struct drm_tegra {
 	int32_t debug_bos_allocated;
 	int32_t debug_bos_total_size;
 	int32_t debug_bos_cached;
+	int32_t debug_bos_cached_size;
 	int32_t debug_bos_mapped;
 	int32_t debug_bos_total_pages;
 	int32_t debug_bos_cached_pages;
@@ -197,7 +200,8 @@ struct drm_tegra_bo {
 int drm_tegra_bo_free(struct drm_tegra_bo *bo);
 int __drm_tegra_bo_map(struct drm_tegra_bo *bo, void **ptr);
 
-void drm_tegra_bo_cache_init(struct drm_tegra_bo_cache *cache, bool coarse);
+void drm_tegra_bo_cache_init(struct drm_tegra_bo_cache *cache,
+			     bool coarse, bool sparse);
 void drm_tegra_bo_cache_cleanup(struct drm_tegra *drm, time_t time);
 struct drm_tegra_bo * drm_tegra_bo_cache_alloc(struct drm_tegra *drm,
 					       uint32_t *size, uint32_t flags);
@@ -206,7 +210,7 @@ void drm_tegra_bo_cache_unmap(struct drm_tegra_bo *bo);
 void *drm_tegra_bo_cache_map(struct drm_tegra_bo *bo);
 
 struct drm_tegra_bo_bucket *
-drm_tegra_get_bucket(struct drm_tegra *drm, uint32_t size);
+drm_tegra_get_bucket(struct drm_tegra *drm, uint32_t size, uint32_t flags);
 
 void drm_tegra_reset_bo(struct drm_tegra_bo *bo, uint32_t flags,
 			bool set_flags);
