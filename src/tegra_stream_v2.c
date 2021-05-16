@@ -442,6 +442,9 @@ int grate_stream_create_v2(struct tegra_stream **pstream,
         return ret;
     }
 
+    if (drm_tegra_get_soc_id(tegra->drm) == DRM_TEGRA114_SOC)
+        stream->tegra114 = true;
+
     DebugMsg("success\n");
 
     *pstream = stream;

@@ -31,6 +31,7 @@ struct shader_program {
     uint16_t vs_attrs_out_mask;
 
     uint32_t *fs_prog_words;
+    uint32_t *fs_prog_words_t114;
     unsigned fs_prog_words_nb;
     unsigned fs_alu_buf_size;
     unsigned fs_pseq_to_dw;

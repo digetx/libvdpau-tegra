@@ -70,6 +70,7 @@ struct tegra_stream {
     bool op_done_synced;
     uint32_t **buf_ptr;
     uint32_t class_id;
+    bool tegra114;
 
     void (*destroy)(struct tegra_stream *stream);
     int (*begin)(struct tegra_stream *stream,

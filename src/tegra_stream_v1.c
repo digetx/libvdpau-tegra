@@ -407,6 +407,9 @@ int tegra_stream_create_v1(struct tegra_stream **pstream,
     stream->prep = tegra_stream_prep_v1;
     stream->sync = tegra_stream_sync_v1;
 
+    if (drm_tegra_get_soc_id(tegra->drm) == DRM_TEGRA114_SOC)
+        stream->tegra114 = true;
+
     DebugMsg("success\n");
 
     *pstream = stream;

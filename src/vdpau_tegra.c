@@ -889,6 +889,7 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
     struct drm_tegra *drm = NULL;
     struct drm_tegra_channel *gr3d = NULL;
     struct drm_tegra_channel *gr2d = NULL;
+    enum drm_tegra_soc_id sid;
     VdpDevice i;
     drm_magic_t magic;
     bool xv_supports_rotation = false;
@@ -955,6 +956,9 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
 
     drm_ver = drm_tegra_version(drm);
     DebugMsg("Tegra DRM kernel version %d\n", drm_ver);
+
+    sid = drm_tegra_get_soc_id(drm);
+    DebugMsg("Tegra SoC ID: %s\n", drm_tegra_soc_names[sid]);
 
     ret = drm_tegra_channel_open(&gr3d, drm, DRM_TEGRA_GR3D);
     if (ret < 0) {

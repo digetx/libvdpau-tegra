@@ -27,6 +27,39 @@ static void host1x_gr3d_init_state(struct tegra_stream *cmds)
 {
     unsigned i;
 
+    /* Tegra114 specific stuff */
+
+    tegra_stream_prep(cmds, 19);
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe44, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x807, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc00, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc01, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc02, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc03, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc30, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc31, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc32, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc33, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc40, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc41, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc42, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc43, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc50, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc51, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc52, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xc53, 0x0000));
+
+    tegra_stream_prep(cmds, 17);
+    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0xe70, 0x0010));
+    for (int i = 0; i < 16; i++)
+        tegra_stream_push(cmds, 0x00000000);
+
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe80, 0x0f00));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe84, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe85, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe86, 0x0000));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xe87, 0x0000));
+
     /* Tegra30 specific stuff */
 
     tegra_stream_prep(cmds, 6);
@@ -39,10 +72,32 @@ static void host1x_gr3d_init_state(struct tegra_stream *cmds)
     tegra_stream_push(cmds, 0x00000003);
     tegra_stream_push(cmds, 0x00000000);
 
+   /*
+    * 0x75x should be written after 0xb00, otherwise non-pow2
+    * textures are corrupted. Reason is unknown. Looks like
+    * combination of 0x75x register bits affects the texture size.
+    *
+    * The 0x75x registers contain garbage after machine's power-off,
+    * but values are retained on soft reboot.
+    */
     tegra_stream_prep(cmds, 17);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x750, 16));
     for (i = 0; i < 16; i++)
         tegra_stream_push(cmds, 0x00000000);
+
+    /*
+     * Tegra114 has additional texture descriptors. The order may
+     * be important,hence it's placed in a middle of T30 regs until
+     * we'll know that this is unnecessary.
+     */
+    tegra_stream_prep(cmds, 49);
+    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x770, 0x0030));
+    for (int i = 0; i < 16 + 2 * 16; i++)
+        tegra_stream_prep(cmds, 0x00000000);
+
+    tegra_stream_prep(cmds, 2);
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x7e0, 0x0001));
+    tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x7e1, 0x0000));
 
     tegra_stream_prep(cmds, 1);
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0xb04, 0x00000000));
@@ -147,6 +202,12 @@ static void host1x_gr3d_init_state(struct tegra_stream *cmds)
     tegra_stream_push(cmds, 0x00000000);
     tegra_stream_push(cmds, 0x00000000);
     tegra_stream_push(cmds, 0x00000000);
+
+    if (cmds->tegra114) {
+        tegra_stream_prep(cmds, 2);
+        tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x41a, 0xa00));
+        tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x416, 0x140));
+    }
 }
 
 void host1x_gr3d_upload_const_vp(struct tegra_stream *cmds, unsigned index,
@@ -216,11 +277,17 @@ static void host1x_gr3d_setup_late_test(struct tegra_stream *cmds)
 
 static void host1x_gr3d_setup_depth_range(struct tegra_stream *cmds)
 {
-    tegra_stream_prep(cmds, 3);
+    unsigned int scale;
 
+    if (cmds->tegra114)
+        scale = 0xFFFFFF;
+    else
+        scale = 0xFFFFF;
+
+    tegra_stream_prep(cmds, 3);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_DEPTH_RANGE_NEAR, 2));
-    tegra_stream_push(cmds, (uint32_t)(0xFFFFF * 0.0f));
-    tegra_stream_push(cmds, (uint32_t)(0xFFFFF * 1.0f));
+    tegra_stream_push(cmds, (uint32_t)(scale * 0.0f));
+    tegra_stream_push(cmds, (uint32_t)(scale * 1.0f));
 }
 
 static void host1x_gr3d_setup_depth_buffer(struct tegra_stream *cmds)
@@ -234,6 +301,12 @@ static void host1x_gr3d_setup_depth_buffer(struct tegra_stream *cmds)
 
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_DEPTH_TEST_PARAMS, 1));
     tegra_stream_pushf(cmds, value);
+
+    if (cmds->tegra114) {
+        tegra_stream_prep(cmds, 2);
+        tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0xe45, 1));
+        tegra_stream_push(cmds, value);
+    }
 }
 
 static void host1x_gr3d_setup_polygon_offset(struct tegra_stream *cmds)
@@ -253,6 +326,14 @@ static void host1x_gr3d_setup_PSEQ_DW_cfg(struct tegra_stream *cmds,
     tegra_stream_prep(cmds, 2);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(TGR3D_FP_PSEQ_DW_CFG, 1));
     tegra_stream_push(cmds, value);
+
+    if (cmds->tegra114) {
+        /* XXX: maybe not needed */
+        tegra_stream_prep(cmds, 3);
+        tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x547, 0x0002));
+        tegra_stream_push(cmds, 0xc0000000);
+        tegra_stream_push(cmds, 0x00000000);
+    }
 }
 
 static void host1x_gr3d_setup_ALU_buffer_size(struct tegra_stream *cmds,
@@ -271,7 +352,8 @@ static void host1x_gr3d_setup_ALU_buffer_size(struct tegra_stream *cmds,
     tegra_stream_push(cmds, value);
 
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x501, 1));
-    tegra_stream_push(cmds, (0x0032 << 16) | (unk_pseq_cfg << 4) | 0xF);
+    tegra_stream_push(cmds, (0x2200 << 16) | (0x0032 << 16) |
+                            (unk_pseq_cfg << 4) | 0xF);
 }
 
 static void host1x_gr3d_setup_stencil_test(struct tegra_stream *cmds)
@@ -538,9 +620,15 @@ static void host1x_gr3d_upload_program(struct tegra_stream *cmds,
     for (i = 0; i < prog->vs_prog_words_nb; i++)
         tegra_stream_push(cmds, prog->vs_prog_words[i]);
 
-    tegra_stream_prep(cmds, prog->fs_prog_words_nb);
-    for (i = 0; i < prog->fs_prog_words_nb; i++)
-        tegra_stream_push(cmds, prog->fs_prog_words[i]);
+    if (cmds->tegra114) {
+        tegra_stream_prep(cmds, prog->fs_prog_words_nb);
+        for (i = 0; i < prog->fs_prog_words_nb; i++)
+            tegra_stream_push(cmds, prog->fs_prog_words_t114[i]);
+    } else {
+        tegra_stream_prep(cmds, prog->fs_prog_words_nb);
+        for (i = 0; i < prog->fs_prog_words_nb; i++)
+            tegra_stream_push(cmds, prog->fs_prog_words[i]);
+    }
 
     tegra_stream_prep(cmds, prog->linker_words_nb);
     for (i = 0; i < prog->linker_words_nb; i++)
