@@ -91,9 +91,9 @@ static void host1x_gr3d_init_state(struct tegra_stream *cmds)
      * we'll know that this is unnecessary.
      */
     tegra_stream_prep(cmds, 49);
-    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x770, 0x0030));
+    tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x770, 48));
     for (int i = 0; i < 16 + 2 * 16; i++)
-        tegra_stream_prep(cmds, 0x00000000);
+        tegra_stream_push(cmds, 0x00000000);
 
     tegra_stream_prep(cmds, 2);
     tegra_stream_push(cmds, HOST1X_OPCODE_IMM(0x7e0, 0x0001));
@@ -148,7 +148,7 @@ static void host1x_gr3d_init_state(struct tegra_stream *cmds)
 
     tegra_stream_prep(cmds, 32);
     tegra_stream_push(cmds, HOST1X_OPCODE_INCR(0x521, 31));
-    for (i = 1; i < 32; i++)
+    for (i = 1; i < 31; i++)
         tegra_stream_push(cmds, 0x00000000);
 
     tegra_stream_prep(cmds, 4);
