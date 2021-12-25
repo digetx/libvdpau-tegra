@@ -143,8 +143,13 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
     }
     memset(bitstream, 0x0, end - bitstream);
 
-    bitstream = start;
-    bitstream_init(reader, bitstream, total_size);
+    if (bufs[0].bitstream_bytes > 5) {
+        bitstream = (char *)bufs[0].bitstream;
+        bitstream_init(reader, bitstream, bufs[0].bitstream_bytes);
+    } else {
+        bitstream = start;
+        bitstream_init(reader, bitstream, total_size);
+    }
 
     if (bitstream[0] != 0x00) {
         ErrorMsg("Invalid NAL byte[0] %02X\n", bitstream[0]);
