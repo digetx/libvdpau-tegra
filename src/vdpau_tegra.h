@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/poll.h>
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
@@ -74,6 +75,12 @@
 #include "uapi/tegra-vde.h"
 #include "uapi/tegra-vde-v1.h"
 
+#include <linux/media.h>
+#include <linux/videodev2.h>
+
+#include "media.h"
+#include "v4l2.h"
+
 #define EXPORTED __attribute__((__visibility__("default")))
 
 #define GRATE_KERNEL_DRM_VERSION            99991
@@ -86,6 +93,8 @@
 #define MAX_SURFACES_NB                     256
 #define MAX_PRESENTATION_QUEUE_TARGETS_NB   32
 #define MAX_PRESENTATION_QUEUES_NB          128
+#define MAX_V4L2_BUFFERS                    24
+#define MIN_V4L2_BUFFERS                    17
 
 #define SURFACE_VIDEO               (1 << 0)
 #define SURFACE_OUTPUT              (1 << 1)
@@ -132,6 +141,8 @@ do { \
         fprintf(stderr, "%s:%d/%s(): " fmt, \
                 __FILE__, __LINE__, __func__, ##args); \
 } while (0)
+
+#define request_log(fmt, args...) ErrorMsg(fmt, ##args)
 
 #define CLAMP(_v, _vmin, _vmax) \
     (((_v) < (_vmin) ? (_vmin) : (((_v) > (_vmax)) ? (_vmax) : (_v))))
@@ -188,6 +199,11 @@ typedef struct tegra_csc {
     } xv;
 } tegra_csc;
 
+typedef struct tegra_device_v4l2 {
+    bool presents;
+    int video_fd;
+} tegra_device_v4l2;
+
 typedef struct tegra_device {
     struct drm_tegra *drm;
     struct drm_tegra_channel *gr3d;
@@ -219,6 +235,8 @@ typedef struct tegra_device {
         bool inited;
         bool ready;
     } xv_csc;
+
+    tegra_device_v4l2 v4l2;
 } tegra_device;
 
 struct tegra_surface;
@@ -232,6 +250,11 @@ typedef struct tegra_shared_surface {
     uint32_t dst_x0, dst_y0, dst_width, dst_height;
     XvImage *xv_img;
 } tegra_shared_surface;
+
+typedef struct tegra_surface_v4l2 {
+    struct timeval timestamp;
+    int buf_idx;
+} tegra_surface_v4l2;
 
 typedef struct tegra_surface {
     tegra_device *dev;
@@ -288,7 +311,19 @@ typedef struct tegra_surface {
     bool data_dirty;
 
     unsigned int map_cnt;
+
+    tegra_surface_v4l2 v4l2;
 } tegra_surface;
+
+typedef struct tegra_decoder_v4l2 {
+    bool presents;
+    int media_fd;
+    int video_fd;
+    int request_fd;
+    unsigned int num_buffers;
+    struct timeval timestamps[MAX_V4L2_BUFFERS];
+    tegra_surface *surfaces[MAX_V4L2_BUFFERS];
+} tegra_decoder_v4l2;
 
 typedef struct tegra_decoder {
     tegra_device *dev;
@@ -297,6 +332,8 @@ typedef struct tegra_decoder {
     uint32_t width;
     uint32_t height;
     bool v1;
+    unsigned int bitstream_min_size;
+    tegra_decoder_v4l2 v4l2;
 } tegra_decoder;
 
 typedef struct tegra_mixer {
@@ -467,6 +504,7 @@ int rotate_surface_gr2d(tegra_surface *src_surf,
                         bool check_only);
 
 VdpTime get_time(void);
+int tegra_ioctl(int fd, int request, ...);
 
 VdpGetErrorString                                   vdp_get_error_string;
 VdpGetProcAddress                                   vdp_get_proc_address;

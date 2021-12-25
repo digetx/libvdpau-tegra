@@ -98,6 +98,7 @@ VdpStatus vdp_video_surface_destroy(VdpVideoSurface surface)
     }
 
     flags = surf->flags;
+    surf->v4l2.buf_idx = -1;
 
     put_surface(surf);
 
