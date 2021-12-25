@@ -32,7 +32,11 @@ libvdpau_tegra_la_SOURCES = vdpau_tegra.c \
                             tgr_3d.xml.h \
                             shaders.h \
                             host1x-gr3d.c \
-                            host1x-gr3d.h
+                            host1x-gr3d.h \
+                            media.c \
+                            media.h \
+                            v4l2.c \
+                            v4l2.h
 
 libvdpau_tegra_la_SOURCES += tegradrm/atomic.h \
                              tegradrm/lists.h \

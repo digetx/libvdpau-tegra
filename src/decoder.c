@@ -94,6 +94,8 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
                                           VdpBitstreamBuffer const *bufs,
                                           struct drm_tegra_bo **bo,
                                           int *data_fd,
+                                          uint32_t *bitstream_data_size,
+                                          uint32_t *bitstream_size,
                                           bitstream_reader *reader)
 {
     char *start, *end;
@@ -110,6 +112,7 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
         total_size += bufs[i].bitstream_bytes;
     }
 
+    *bitstream_data_size = total_size;
     *bo = NULL;
 
     /* at first try to allocate / reserve 512KB for common allocations */
@@ -120,7 +123,7 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
 
     if (*bo == NULL) {
         /* try again without reservation */
-        aligned_size = ALIGN(total_size, 16 * 1024);
+        aligned_size = ALIGN(total_size, dec->bitstream_min_size);
         *bo = alloc_data(dec, (void **)&start, data_fd, aligned_size);
 
         if (*bo == NULL) {
@@ -129,6 +132,7 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
     }
 
     total_size = aligned_size;
+    *bitstream_size = aligned_size;
 
     end = start + total_size;
     bitstream = start;
@@ -508,16 +512,12 @@ to_v1:
         ctx_v1.reserved                            = 0;
     }
 
-repeat:
     if (dec->v1)
-        err = ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264_V1, &ctx_v1);
+        err = tegra_ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264_V1, &ctx_v1);
     else
-        err = ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264, &ctx);
+        err = tegra_ioctl(dev->vde_fd, TEGRA_VDE_IOCTL_DECODE_H264, &ctx);
 
     if (err != 0) {
-        if (errno == EINTR || errno == EAGAIN) {
-            goto repeat;
-        }
         if (errno == ENOTTY && !dec->v1) {
             DebugMsg("switching to v1 IOCTL\n");
             dec->v1 = true;
@@ -529,6 +529,299 @@ repeat:
     host1x_pixelbuffer_check_guard(surf->pixbuf);
 
     return VDP_STATUS_OK;
+}
+
+static void h264_vdpau_picture_to_v4l2(tegra_decoder *dec,
+                                       VdpPictureInfoH264 const *info,
+                                       struct v4l2_ctrl_h264_decode_params *decode,
+                                       struct v4l2_ctrl_h264_sps *sps,
+                                       struct v4l2_ctrl_h264_pps *pps)
+{
+    int32_t max_frame_num = 1 << (info->log2_max_frame_num_minus4 + 4);
+    VdpReferenceFrameH264 const *ref;
+    tegra_surface *surf;
+    unsigned int i;
+
+    decode->frame_num = info->frame_num;
+    decode->nal_ref_idc = info->is_reference;
+    decode->top_field_order_cnt = info->field_order_cnt[0];
+    decode->bottom_field_order_cnt = info->field_order_cnt[1];
+
+    sps->level_idc = 51;
+    sps->chroma_format_idc = 1;
+    sps->pic_order_cnt_type = info->pic_order_cnt_type;
+    sps->pic_width_in_mbs_minus1 = dec->width / 16 - 1;
+    sps->profile_idc = dec->is_baseline_profile ? 66 : 77;
+    sps->pic_height_in_map_units_minus1 = dec->height / 16 - 1;
+    sps->log2_max_frame_num_minus4 = info->log2_max_frame_num_minus4;
+    sps->log2_max_pic_order_cnt_lsb_minus4 = info->log2_max_pic_order_cnt_lsb_minus4;
+
+    if (info->frame_mbs_only_flag)
+        sps->flags |= V4L2_H264_SPS_FLAG_FRAME_MBS_ONLY;
+
+    if (info->mb_adaptive_frame_field_flag)
+        sps->flags |= V4L2_H264_SPS_FLAG_MB_ADAPTIVE_FRAME_FIELD;
+
+    if (info->direct_8x8_inference_flag)
+        sps->flags |= V4L2_H264_SPS_FLAG_DIRECT_8X8_INFERENCE;
+
+    if (info->delta_pic_order_always_zero_flag)
+        sps->flags |= V4L2_H264_SPS_FLAG_DELTA_PIC_ORDER_ALWAYS_ZERO;
+
+    pps->weighted_bipred_idc = info->weighted_bipred_idc;
+    pps->pic_init_qp_minus26 = info->pic_init_qp_minus26;
+    pps->chroma_qp_index_offset = info->chroma_qp_index_offset;
+    pps->second_chroma_qp_index_offset = info->second_chroma_qp_index_offset;
+    pps->num_ref_idx_l0_default_active_minus1 = info->num_ref_idx_l0_active_minus1;
+    pps->num_ref_idx_l1_default_active_minus1 = info->num_ref_idx_l1_active_minus1;
+
+    if (info->entropy_coding_mode_flag)
+        pps->flags |= V4L2_H264_PPS_FLAG_ENTROPY_CODING_MODE;
+
+    if (info->weighted_pred_flag)
+        pps->flags |= V4L2_H264_PPS_FLAG_WEIGHTED_PRED;
+
+    if (info->transform_8x8_mode_flag)
+        pps->flags |= V4L2_H264_PPS_FLAG_TRANSFORM_8X8_MODE;
+
+    if (info->constrained_intra_pred_flag)
+        pps->flags |= V4L2_H264_PPS_FLAG_CONSTRAINED_INTRA_PRED;
+
+    if (info->pic_order_present_flag)
+        pps->flags |= V4L2_H264_PPS_FLAG_BOTTOM_FIELD_PIC_ORDER_IN_FRAME_PRESENT;
+
+    if (info->deblocking_filter_control_present_flag)
+        pps->flags |= V4L2_H264_PPS_FLAG_DEBLOCKING_FILTER_CONTROL_PRESENT;
+
+    if (info->redundant_pic_cnt_present_flag)
+        pps->flags |= V4L2_H264_PPS_FLAG_REDUNDANT_PIC_CNT_PRESENT;
+
+    for (i = 0; i < 16; i++) {
+        ref = &info->referenceFrames[i];
+        surf = get_surface_video(ref->surface);
+
+        if (!surf) {
+            if (ref->surface != VDP_INVALID_HANDLE) {
+                ErrorMsg("invalid DPB frames list\n");
+            }
+            continue;
+        }
+
+        if (surf->v4l2.buf_idx < 0) {
+            ErrorMsg("invalid DPB frames list\n");
+            continue;
+        }
+
+        if (dec->v4l2.surfaces[surf->v4l2.buf_idx] != surf) {
+            ErrorMsg("invalid DPB frames list\n");
+            continue;
+        }
+
+        if (info->frame_num == 0)
+            decode->dpb[i].pic_num = surf->frame->frame_num - max_frame_num;
+        else
+            decode->dpb[i].pic_num = surf->frame->frame_num;
+
+        decode->dpb[i].fields = V4L2_H264_FRAME_REF;
+        decode->dpb[i].frame_num = surf->frame->frame_num;
+        decode->dpb[i].top_field_order_cnt = surf->pic_order_cnt;
+        decode->dpb[i].bottom_field_order_cnt = surf->pic_order_cnt;
+        decode->dpb[i].reference_ts = v4l2_timeval_to_ns(&dec->v4l2.timestamps[surf->v4l2.buf_idx]);
+
+        decode->dpb[i].flags  = V4L2_H264_DPB_ENTRY_FLAG_ACTIVE;
+        decode->dpb[i].flags |= V4L2_H264_DPB_ENTRY_FLAG_VALID;
+
+        if (ref->is_long_term)
+            decode->dpb[i].flags |= V4L2_H264_DPB_ENTRY_FLAG_LONG_TERM;
+
+        put_surface(surf);
+    }
+}
+
+static int enqueue_surface_v4l2(tegra_decoder *dec, tegra_surface *surf,
+                                unsigned int index)
+{
+    unsigned int offsets[3];
+    unsigned int sizes[3];
+    int dmafds[3];
+    int err;
+
+    dmafds[0] = surf->frame->y_fd;
+    dmafds[1] = surf->frame->cb_fd;
+    dmafds[2] = surf->frame->cr_fd;
+
+    offsets[0] = surf->frame->y_offset;
+    offsets[1] = surf->frame->cb_offset;
+    offsets[2] = surf->frame->cr_offset;
+
+    drm_tegra_bo_get_size(surf->y_bo, &sizes[0]);
+    drm_tegra_bo_get_size(surf->cb_bo, &sizes[1]);
+    drm_tegra_bo_get_size(surf->cr_bo, &sizes[2]);
+
+    err = v4l2_queue_buffer(dec->v4l2.video_fd, -1,
+                            V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
+                            NULL, index, dmafds, sizes, NULL, offsets, 3,
+                            surf->frame->flags);
+    if (err)
+        return err;
+
+    return 0;
+}
+
+static VdpStatus tegra_decode_h264_v4l2(tegra_decoder *dec, tegra_surface *surf,
+                                        VdpPictureInfoH264 const *info,
+                                        int bitstream_data_fd,
+                                        unsigned int bitstream_data_size,
+                                        unsigned int bitstream_size,
+                                        bitstream_reader *reader)
+{
+    struct v4l2_ctrl_h264_decode_params decode = { 0 };
+    unsigned int slice_type = get_slice_type(reader);
+    unsigned int slice_type_mod = slice_type % 5;
+    unsigned int i, buf_idx, buf_flags = 0;
+    unsigned int bitstream_offset = 0;
+    struct v4l2_ctrl_h264_sps sps = { 0 };
+    struct v4l2_ctrl_h264_pps pps = { 0 };
+    bool decode_error = false;
+    int err;
+
+    if ((info->weighted_pred_flag && (slice_type_mod == 0 || slice_type_mod == 3)) ||
+        (info->weighted_bipred_idc == 1 && slice_type_mod == 1)) {
+        ErrorMsg("Explicit weighted prediction unimplemented\n");
+        return VDP_STATUS_NO_IMPLEMENTATION;
+    }
+
+    if (info->entropy_coding_mode_flag) {
+        ErrorMsg("CABAC decoding unimplemented\n");
+        return VDP_STATUS_NO_IMPLEMENTATION;
+    }
+
+    if (slice_type_mod == I_FRAME)
+        buf_flags |= V4L2_BUF_FLAG_KEYFRAME;
+    if (slice_type_mod == P_FRAME)
+        buf_flags |= V4L2_BUF_FLAG_PFRAME;
+    if (slice_type_mod == B_FRAME)
+        buf_flags |= V4L2_BUF_FLAG_BFRAME;
+
+    if (surf->v4l2.buf_idx >= 0) {
+        for (buf_idx = 0; buf_idx < dec->v4l2.num_buffers; buf_idx++) {
+            struct timeval ref_timestamp = surf->v4l2.timestamp;
+
+            if (dec->v4l2.surfaces[buf_idx] == surf &&
+                !memcmp(&ref_timestamp, &dec->v4l2.timestamps[buf_idx],
+                        sizeof(ref_timestamp))) {
+                goto reinit_surface;
+            }
+        }
+    }
+
+    for (buf_idx = 0; buf_idx < dec->v4l2.num_buffers; buf_idx++) {
+        struct timeval ref_timestamp = { 0 };
+
+        if (!memcmp(&ref_timestamp, &dec->v4l2.timestamps[buf_idx],
+                    sizeof(ref_timestamp))) {
+            goto reinit_surface;
+        }
+    }
+
+    for (buf_idx = 0; buf_idx < dec->v4l2.num_buffers; buf_idx++) {
+        bool busy = false;
+
+        for (i = 0; i < 16; i++) {
+            VdpReferenceFrameH264 const *ref = &info->referenceFrames[i];
+            tegra_surface *ref_surf = get_surface_video(ref->surface);
+
+            if (ref_surf) {
+                struct timeval ref_timestamp = ref_surf->v4l2.timestamp;
+
+                put_surface(ref_surf);
+
+                if (!memcmp(&ref_timestamp, &dec->v4l2.timestamps[buf_idx],
+                            sizeof(ref_timestamp))) {
+                    busy = true;
+                    break;
+                }
+            }
+        }
+
+        if (!busy)
+            break;
+    }
+
+    if (buf_idx == dec->v4l2.num_buffers) {
+        ErrorMsg("V4L2 frame buffer overflow\n");
+        return VDP_STATUS_ERROR;
+    }
+
+reinit_surface:
+    gettimeofday(&surf->v4l2.timestamp, NULL);
+    surf->pic_order_cnt     = info->field_order_cnt[0];
+    surf->frame->frame_num  = info->frame_num;
+
+    h264_vdpau_picture_to_v4l2(dec, info, &decode, &sps, &pps);
+
+    err = media_request_reinit(dec->v4l2.request_fd);
+    if (err)
+        return VDP_STATUS_ERROR;
+
+    err = v4l2_set_control(dec->v4l2.video_fd, dec->v4l2.request_fd,
+                           V4L2_CID_STATELESS_H264_DECODE_PARAMS,
+                           &decode, sizeof(decode));
+    if (err)
+        return VDP_STATUS_ERROR;
+
+    err = v4l2_set_control(dec->v4l2.video_fd, dec->v4l2.request_fd,
+                           V4L2_CID_STATELESS_H264_SPS,
+                           &sps, sizeof(sps));
+    if (err)
+        return VDP_STATUS_ERROR;
+
+    err = v4l2_set_control(dec->v4l2.video_fd, dec->v4l2.request_fd,
+                           V4L2_CID_STATELESS_H264_PPS,
+                           &pps, sizeof(pps));
+    if (err)
+        return VDP_STATUS_ERROR;
+
+    err = v4l2_queue_buffer(dec->v4l2.video_fd, dec->v4l2.request_fd,
+                            V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
+                            &surf->v4l2.timestamp, 0,
+                            &bitstream_data_fd,
+                            &bitstream_size,
+                            &bitstream_data_size,
+                            &bitstream_offset,
+                            1, buf_flags);
+    if (err)
+        return VDP_STATUS_ERROR;
+
+    err = enqueue_surface_v4l2(dec, surf, buf_idx);
+    if (err)
+            goto dequeue_bitstream;
+
+    err = media_request_queue(dec->v4l2.request_fd);
+    if (err)
+            goto dequeue_surf;
+
+    err = media_request_wait_completion(dec->v4l2.request_fd);
+    if (err)
+            goto dequeue_surf;
+
+    surf->v4l2.buf_idx = buf_idx;
+    dec->v4l2.surfaces[buf_idx] = surf;
+    dec->v4l2.timestamps[buf_idx] = surf->v4l2.timestamp;
+
+dequeue_surf:
+    v4l2_dequeue_buffer(dec->v4l2.video_fd,
+                        V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, 3,
+                        &decode_error);
+
+dequeue_bitstream:
+    v4l2_dequeue_buffer(dec->v4l2.video_fd,
+                        V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, 1,
+                        NULL);
+
+    host1x_pixelbuffer_check_guard(surf->pixbuf);
+
+    return (err || decode_error) ? VDP_STATUS_ERROR : VDP_STATUS_OK;
 }
 
 VdpStatus vdp_decoder_query_capabilities(VdpDevice device,
@@ -556,6 +849,153 @@ VdpStatus vdp_decoder_query_capabilities(VdpDevice device,
     }
 
     return VDP_STATUS_OK;
+}
+
+static bool init_v4l2(tegra_decoder *dec)
+{
+    unsigned int i;
+    char path[256];
+    char *env_str;
+    int err, fd;
+
+    dec->v4l2.video_fd = -1;
+    dec->v4l2.media_fd = -1;
+    dec->v4l2.request_fd = -1;
+
+    env_str = getenv("VDPAU_TEGRA_FORCE_VDE_UAPI");
+    if (env_str && strcmp(env_str, "0")) {
+        DebugMsg("VDE UAPI enforced\n");
+        return false;
+    }
+
+    for (i = 0; i < 256; i++) {
+        struct v4l2_capability capability = {};
+
+        sprintf(path, "/dev/video%u", i);
+
+        fd = open(path, O_NONBLOCK);
+        if (fd < 0)
+            continue;
+
+        err = ioctl(fd, VIDIOC_QUERYCAP, &capability);
+        if (!err) {
+            if (!strcmp((char *)capability.driver, "tegra-vde"))
+                break;
+        }
+
+        close(fd);
+    }
+
+    if (i == 256)
+        goto v4l_fail;
+
+    dec->v4l2.video_fd = fd;
+
+    for (i = 0; i < 256; i++) {
+        struct media_device_info info = {};
+
+        sprintf(path, "/dev/media%u", i);
+
+        fd = open(path, 0);
+        if (fd < 0)
+            continue;
+
+        err = ioctl(fd, MEDIA_IOC_DEVICE_INFO, &info);
+        if (!err) {
+            if (!strcmp(info.driver, "tegra-vde"))
+                break;
+        }
+
+        close(fd);
+    }
+
+    if (i == 256)
+        goto v4l_fail;
+
+    dec->v4l2.media_fd = fd;
+
+    if (v4l2_set_format(dec->v4l2.video_fd,
+                        V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
+                        V4L2_PIX_FMT_H264_SLICE,
+                        dec->width, dec->height))
+        goto v4l_fail;
+
+    if (v4l2_set_format(dec->v4l2.video_fd,
+                        V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
+                        V4L2_PIX_FMT_YUV420M,
+                        dec->width, dec->height))
+        goto v4l_fail;
+
+    if (v4l2_get_format(dec->v4l2.video_fd, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
+                        NULL, NULL, NULL, &dec->bitstream_min_size, NULL))
+        goto v4l_fail;
+
+    dec->v4l2.num_buffers = 1;
+
+    if (v4l2_request_buffers(dec->v4l2.video_fd,
+                             V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
+                             &dec->v4l2.num_buffers))
+        goto v4l_fail;
+
+    dec->v4l2.num_buffers = MAX_V4L2_BUFFERS;
+
+    if (v4l2_request_buffers(dec->v4l2.video_fd,
+                             V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
+                             &dec->v4l2.num_buffers))
+    {
+        if (dec->v4l2.num_buffers < MIN_V4L2_BUFFERS)
+            goto v4l_fail;
+    }
+
+    err = v4l2_set_stream(dec->v4l2.video_fd,
+                          V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
+                          true);
+    if (err)
+        goto v4l_fail;
+
+    err = v4l2_set_stream(dec->v4l2.video_fd,
+                          V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
+                          true);
+    if (err)
+        goto v4l_fail;
+
+    fd = media_request_alloc(dec->v4l2.media_fd);
+    if (fd < 0)
+        goto v4l_fail;
+
+    dec->v4l2.request_fd = fd;
+    dec->v4l2.presents = true;
+
+    return true;
+
+v4l_fail:
+    if (dec->v4l2.request_fd >= 0)
+        close(dec->v4l2.request_fd);
+    if (dec->v4l2.media_fd >= 0)
+        close(dec->v4l2.media_fd);
+    if (dec->v4l2.video_fd >= 0)
+        close(dec->v4l2.video_fd);
+
+    dec->v4l2.video_fd = -1;
+    dec->v4l2.media_fd = -1;
+    dec->v4l2.request_fd = -1;
+
+    return false;
+}
+
+static void deinit_v4l2(tegra_decoder *dec)
+{
+    if (dec->v4l2.presents) {
+        close(dec->v4l2.request_fd);
+        close(dec->v4l2.media_fd);
+        close(dec->v4l2.video_fd);
+
+        dec->v4l2.video_fd = -1;
+        dec->v4l2.media_fd = -1;
+        dec->v4l2.request_fd = -1;
+
+        dec->v4l2.presents = false;
+    }
 }
 
 VdpStatus vdp_decoder_create(VdpDevice device,
@@ -611,6 +1051,12 @@ VdpStatus vdp_decoder_create(VdpDevice device,
     dec->width = ALIGN(width, 16);
     dec->height = ALIGN(height, 16);
     dec->is_baseline_profile = is_baseline_profile;
+    dec->bitstream_min_size = 128 * 1024;
+
+    if (init_v4l2(dec))
+        DebugMsg("V4L2 initialized\n");
+    else
+        DebugMsg("V4L2 support undetected\n");
 
     *decoder = i;
 
@@ -630,6 +1076,7 @@ VdpStatus unref_decoder(tegra_decoder *dec)
         return VDP_STATUS_OK;
     }
 
+    deinit_v4l2(dec);
     unref_device(dec->dev);
     free(dec);
 
@@ -675,6 +1122,8 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
     tegra_surface *orig, *surf = get_surface_video(target);
     struct drm_tegra_bo *bitstream_bo;
     bitstream_reader bitstream_reader;
+    uint32_t bitstream_data_size;
+    uint32_t bitstream_size;
     int bitstream_data_fd;
     VdpTime time = 0;
     VdpStatus ret;
@@ -690,6 +1139,8 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
 
     ret = copy_bitstream_to_dmabuf(dec, bitstream_buffer_count, bufs,
                                    &bitstream_bo, &bitstream_data_fd,
+                                   &bitstream_data_size,
+                                   &bitstream_size,
                                    &bitstream_reader);
 
     if (ret != VDP_STATUS_OK) {
@@ -706,8 +1157,15 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
         ref_surface(surf);
     }
 
-    ret = tegra_decode_h264(dec, surf, picture_info,
-                            bitstream_data_fd, &bitstream_reader);
+    if (dec->v4l2.present)
+        ret = tegra_decode_h264_v4l2(dec, surf, picture_info,
+                                     bitstream_data_fd,
+                                     bitstream_data_size,
+                                     bitstream_size,
+                                     &bitstream_reader);
+    else
+        ret = tegra_decode_h264(dec, surf, picture_info,
+                                bitstream_data_fd, &bitstream_reader);
 
     free_data(bitstream_bo, bitstream_data_fd);
 

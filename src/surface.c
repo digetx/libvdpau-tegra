@@ -280,6 +280,8 @@ int alloc_surface_data(tegra_surface *surf)
     }
 
     if (video) {
+        unsigned int luma_stride, chroma_stride;
+
         frame = surf->frame;
 
         frame->y_fd = -1;
@@ -287,10 +289,36 @@ int alloc_surface_data(tegra_surface *surf)
         frame->cr_fd = -1;
         frame->aux_fd = -1;
 
-        pixbuf = host1x_pixelbuffer_create(dev->drm,
-                                           width, ALIGN(height, 16),
-                                           ALIGN(width, 16),
-                                           ALIGN(width, 32) / 2,
+        if (dev->v4l2.presents) {
+            struct v4l2_format format;
+
+            ret = v4l2_try_format(dev->v4l2.video_fd,
+                                  V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
+                                  width, height, V4L2_PIX_FMT_YUV420M,
+                                  &format);
+            if (ret)
+                goto err_cleanup;
+
+            if (format.fmt.pix_mp.pixelformat != V4L2_PIX_FMT_YUV420M) {
+                ErrorMsg("unexpected pixelformat %u\n",
+                         format.fmt.pix_mp.pixelformat);
+                ret = -EINVAL;
+                goto err_cleanup;
+            }
+
+            luma_stride   = format.fmt.pix_mp.plane_fmt[0].bytesperline;
+            chroma_stride = format.fmt.pix_mp.plane_fmt[1].bytesperline;
+        } else {
+            luma_stride   = ALIGN(width, 16);
+            chroma_stride = ALIGN(width, 32) / 2;
+        }
+
+        DebugMsg("luma_stride %u chroma_stride %u\n",
+                 luma_stride, chroma_stride);
+
+        pixbuf = host1x_pixelbuffer_create(dev->drm, width, height,
+                                           luma_stride,
+                                           chroma_stride,
                                            PIX_BUF_FMT_YV12,
                                            PIX_BUF_LAYOUT_LINEAR);
         if (pixbuf == NULL) {
@@ -345,6 +373,10 @@ int alloc_surface_data(tegra_surface *surf)
 
         /* aux stuff */
 
+        /* kernel V4L driver allocates aux buffer internally */
+        if (dev->v4l2.presents)
+            goto done_aux;
+
         size = ALIGN(width, 32) * ALIGN(height, 16) / 4;
 
         ret = drm_tegra_bo_new(&surf->aux_bo, dev->drm, bo_flags, ALIGN(size, 256));
@@ -361,6 +393,8 @@ int alloc_surface_data(tegra_surface *surf)
                      ret, strerror(-ret));
             goto err_cleanup;
         }
+
+done_aux:
     }
 
     if (output && !tegra_vdpau_force_dri) {
@@ -428,6 +462,7 @@ int alloc_surface_data(tegra_surface *surf)
 
     surf->xv_img = xv_img;
     surf->pixbuf = pixbuf;
+    surf->v4l2.buf_idx = -1;
     surf->data_allocated = true;
 
     return 0;

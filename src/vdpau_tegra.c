@@ -48,6 +48,65 @@ VdpCSCMatrix CSC_BT_709 = {
     { 1.164384f, 2.112402f, 0.000000f },
 };
 
+static bool init_v4l2(tegra_device *dev)
+{
+    unsigned int i;
+    char path[256];
+    char *env_str;
+    int err, fd;
+
+    dev->v4l2.video_fd = -1;
+
+    env_str = getenv("VDPAU_TEGRA_FORCE_VDE_UAPI");
+    if (env_str && strcmp(env_str, "0")) {
+        DebugMsg("VDE UAPI enforced\n");
+        return false;
+    }
+
+    for (i = 0; i < 256; i++) {
+        struct v4l2_capability capability = {};
+
+        sprintf(path, "/dev/video%u", i);
+
+        fd = open(path, O_NONBLOCK);
+        if (fd < 0)
+            continue;
+
+        err = ioctl(fd, VIDIOC_QUERYCAP, &capability);
+        if (!err) {
+            if (!strcmp((char *)capability.driver, "tegra-vde"))
+                break;
+        }
+
+        close(fd);
+    }
+
+    if (i == 256)
+        goto v4l_fail;
+
+    dev->v4l2.video_fd = fd;
+    dev->v4l2.presents = true;
+
+    return true;
+
+v4l_fail:
+    if (dev->v4l2.video_fd >= 0)
+        close(dev->v4l2.video_fd);
+
+    dev->v4l2.video_fd = -1;
+
+    return false;
+}
+
+static void deinit_v4l2(tegra_device *dev)
+{
+    if (dev->v4l2.presents) {
+        close(dev->v4l2.video_fd);
+        dev->v4l2.video_fd = -1;
+        dev->v4l2.presents = false;
+    }
+}
+
 bool tegra_check_xv_atom(tegra_device *dev, char const *atom_name)
 {
     XvAttribute *attributes;
@@ -746,6 +805,7 @@ VdpStatus unref_device(tegra_device *dev)
         XvUngrabPort(dev->display, dev->xv_port, CurrentTime);
     }
 
+    deinit_v4l2(dev);
     drm_tegra_channel_close(dev->gr3d);
     drm_tegra_channel_close(dev->gr2d);
     drm_tegra_close(dev->drm);
@@ -1037,6 +1097,11 @@ EXPORTED VdpStatus vdp_imp_device_create_x11(Display *display,
         }
     }
 
+    if (init_v4l2(tegra_devices[i]))
+        DebugMsg("V4L2 initialized\n");
+    else
+        DebugMsg("V4L2 support undetected\n");
+
     *device = i;
     *get_proc_address = vdp_get_proc_address;
 
@@ -1049,4 +1114,21 @@ err_cleanup:
     close(drm_fd);
 
     return VDP_STATUS_RESOURCES;
+}
+
+int tegra_ioctl(int fd, int request, ...)
+{
+    va_list ap;
+    void *arg;
+    int ret;
+
+    va_start(ap, request);
+    arg = va_arg(ap, void *);
+    va_end(ap);
+
+    do {
+        ret = ioctl(fd, request, arg);
+    } while (ret < 0 && (errno == EINTR));
+
+    return ret;
 }
