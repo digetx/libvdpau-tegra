@@ -22,3 +22,5 @@ m4
 *.lex.c
 src/shaders/*.bin.h
 src/gen_shader_bin
+*~
+*.orig
