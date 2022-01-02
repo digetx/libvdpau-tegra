@@ -169,6 +169,7 @@ struct drm_tegra_bo {
 	uint32_t name;
 	atomic_t ref;
 	uint32_t mmap_ref;
+	int dmabuf_fd;
 	void *map;
 
 #if HAVE_VALGRIND

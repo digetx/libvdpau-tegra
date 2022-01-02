@@ -253,6 +253,9 @@ vg_free:
 	if (err < 0)
 		err = -errno;
 
+	if (bo->dmabuf_fd >= 0)
+		close(bo->dmabuf_fd);
+
 #ifndef NDEBUG
 	memset(bo, 0, sizeof(*bo));
 #endif
@@ -385,6 +388,7 @@ int drm_tegra_bo_new(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 	DRMINITLISTHEAD(&bo->push_list);
 	DRMINITLISTHEAD(&bo->bo_list);
 	atomic_set(&bo->ref, 1);
+	bo->dmabuf_fd = -1;
 	bo->reuse = true;
 	bo->flags = flags;
 	bo->size = size;
@@ -469,6 +473,7 @@ int drm_tegra_bo_wrap(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 	DRMINITLISTHEAD(&bo->push_list);
 	DRMINITLISTHEAD(&bo->bo_list);
 	atomic_set(&bo->ref, 1);
+	bo->dmabuf_fd = -1;
 	bo->handle = handle;
 	bo->flags = flags;
 	bo->size = size;
@@ -841,6 +846,7 @@ int drm_tegra_bo_from_name(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 
 	drmHashInsert(drm->name_table, name, bo);
 	atomic_set(&bo->ref, 1);
+	bo->dmabuf_fd = -1;
 	bo->name = name;
 	bo->handle = args.handle;
 	bo->flags = flags;
@@ -867,15 +873,35 @@ int drm_tegra_bo_to_dmabuf(struct drm_tegra_bo *bo, uint32_t *handle)
 	if (!bo || !handle)
 		return -EINVAL;
 
+	pthread_mutex_lock(&table_lock);
+
+	if (bo->dmabuf_fd >= 0) {
+		prime_fd = bo->dmabuf_fd;
+		goto done;
+	}
+
 	err = drmPrimeHandleToFD(bo->drm->fd, bo->handle, DRM_CLOEXEC,
 				 &prime_fd);
 	if (err) {
 		VDBG_BO(bo, "faile err %d strerror(%s)\n",
 			err, strerror(-err));
+		pthread_mutex_unlock(&table_lock);
 		return err;
 	}
 
-	*handle = prime_fd;
+	bo->dmabuf_fd = prime_fd;
+done:
+	*handle = dup(prime_fd);
+
+	err = fcntl(prime_fd, F_SETFD, FD_CLOEXEC);
+	if (err < 0) {
+		VDBG_BO(bo, "fcntl failed err %d strerror(%s)\n",
+			-errno, strerror(errno));
+		pthread_mutex_unlock(&table_lock);
+		return err;
+	}
+
+	pthread_mutex_unlock(&table_lock);
 
 	VDBG_BO(bo, "success prime_fd %u\n",  prime_fd);
 
@@ -927,6 +953,7 @@ int drm_tegra_bo_from_dmabuf(struct drm_tegra_bo **bop, struct drm_tegra *drm,
 
 	atomic_set(&bo->ref, 1);
 	bo->handle = handle;
+	bo->dmabuf_fd = -1;
 	bo->flags = flags;
 	bo->size = size;
 	bo->drm = drm;
