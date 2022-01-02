@@ -61,6 +61,10 @@ static struct drm_tegra_bo *alloc_data(tegra_decoder *dec, void **map,
         bo_flags |= DRM_TEGRA_GEM_CREATE_DONT_KMAP;
 
     ret = drm_tegra_bo_new(&bo, dec->dev->drm, bo_flags, size);
+    if (ret < 0) {
+        tegra_surface_drop_caches();
+        ret = drm_tegra_bo_new(&bo, dec->dev->drm, bo_flags, size);
+    }
 
     if (ret < 0) {
         return NULL;
@@ -617,6 +621,11 @@ static void h264_vdpau_picture_to_v4l2(tegra_decoder *dec,
             continue;
         }
 
+        if (surf->cache_entry.cache != &dec->surf_cache) {
+            ErrorMsg("invalid DPB frames list\n");
+            continue;
+        }
+
         if (dec->v4l2.surfaces[surf->v4l2.buf_idx] != surf) {
             ErrorMsg("invalid DPB frames list\n");
             continue;
@@ -1050,6 +1059,7 @@ VdpStatus vdp_decoder_create(VdpDevice device,
         return VDP_STATUS_RESOURCES;
     }
 
+    tegra_surface_cache_init(&dec->surf_cache);
     atomic_set(&dec->refcnt, 1);
     ref_device(dev);
     dec->dev = dev;
@@ -1082,6 +1092,7 @@ VdpStatus unref_decoder(tegra_decoder *dec)
     }
 
     deinit_v4l2(dec);
+    tegra_surface_cache_release(&dec->surf_cache);
     unref_device(dec->dev);
     free(dec);
 
@@ -1162,7 +1173,9 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
         ref_surface(surf);
     }
 
-    if (dec->v4l2.present)
+    tegra_surface_cache_surface_self_remove(surf);
+
+    if (dec->v4l2.presents)
         ret = tegra_decode_h264_v4l2(dec, surf, picture_info,
                                      bitstream_data_fd,
                                      bitstream_data_size,
@@ -1171,6 +1184,8 @@ VdpStatus vdp_decoder_render(VdpDecoder decoder,
     else
         ret = tegra_decode_h264(dec, surf, picture_info,
                                 bitstream_data_fd, &bitstream_reader);
+
+    tegra_surface_cache_add_surface(&dec->surf_cache, surf);
 
     free_data(bitstream_bo, bitstream_data_fd);
 
