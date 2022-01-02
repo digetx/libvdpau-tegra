@@ -165,6 +165,8 @@ do { \
 #define FLOAT_TO_FIXED_0_8(fp) \
     (((int32_t) (fp * 256.0f + 0.5f)) & ((1 << 8) - 1))
 
+#define NSEC_PER_SEC   1000000000ULL
+
 typedef union TegraXvVdpauInfo {
     struct {
         unsigned int visible : 1;
@@ -198,6 +200,17 @@ typedef struct tegra_csc {
         uint32_t kub_kvb;
     } xv;
 } tegra_csc;
+
+typedef struct tegra_surface_cache {
+    struct list_head list;
+    struct list_head cache_list_entry;
+} tegra_surface_cache;
+
+typedef struct tegra_surface_cache_entry {
+    struct list_head entry;
+    VdpTime last_use;
+    tegra_surface_cache *cache;
+} tegra_surface_cache_entry;
 
 typedef struct tegra_device_v4l2 {
     bool presents;
@@ -261,6 +274,7 @@ typedef struct tegra_surface {
     struct tegra_stream *stream_3d;
     struct tegra_stream *stream_2d;
 
+    bool detached;
     bool destroyed;
 
     struct tegra_vde_h264_frame *frame;
@@ -313,6 +327,7 @@ typedef struct tegra_surface {
     unsigned int map_cnt;
 
     tegra_surface_v4l2 v4l2;
+    tegra_surface_cache_entry cache_entry;
 } tegra_surface;
 
 typedef struct tegra_decoder_v4l2 {
@@ -334,6 +349,7 @@ typedef struct tegra_decoder {
     bool v1;
     unsigned int bitstream_min_size;
     tegra_decoder_v4l2 v4l2;
+    tegra_surface_cache surf_cache;
 } tegra_decoder;
 
 typedef struct tegra_mixer {
@@ -505,6 +521,18 @@ int rotate_surface_gr2d(tegra_surface *src_surf,
 
 VdpTime get_time(void);
 int tegra_ioctl(int fd, int request, ...);
+
+void tegra_surface_cache_init(tegra_surface_cache *cache);
+void tegra_surface_cache_release(tegra_surface_cache *cache);
+void tegra_surface_cache_add_surface(tegra_surface_cache *cache,
+                                     tegra_surface *surf);
+void tegra_surface_cache_surface_self_remove(tegra_surface *surf);
+void tegra_surface_cache_surface_update_last_use(tegra_surface *surf);
+void tegra_surface_drop_caches(void);
+tegra_surface * tegra_surface_cache_take_surface(tegra_device *dev,
+                                                 uint32_t width, uint32_t height,
+                                                 VdpRGBAFormat rgba_format,
+                                                 int output, int video);
 
 VdpGetErrorString                                   vdp_get_error_string;
 VdpGetProcAddress                                   vdp_get_proc_address;

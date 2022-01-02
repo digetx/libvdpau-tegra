@@ -206,6 +206,16 @@ static void shared_surface_break_link_locked(tegra_shared_surface *shared)
 
     shared->disp->shared = NULL;
     shared->video->shared = NULL;
+
+    pthread_mutex_lock(&shared->video->lock);
+
+    if (shared->video->detached) {
+        tegra_surface_cache_surface_update_last_use(shared->video);
+        shared->video->detached = false;
+        shared->video->destroyed = true;
+    }
+
+    pthread_mutex_unlock(&shared->video->lock);
 }
 
 tegra_surface * shared_surface_swap_video(tegra_surface *old)
@@ -227,9 +237,9 @@ tegra_surface * shared_surface_swap_video(tegra_surface *old)
                  shared->disp->surface_id,
                  shared->video->surface_id);
     }
-    pthread_mutex_unlock(&shared_lock);
 
     if (!shared) {
+        pthread_mutex_unlock(&shared_lock);
         return old;
     }
 
@@ -239,12 +249,15 @@ tegra_surface * shared_surface_swap_video(tegra_surface *old)
         replace_surface(old, new);
         pthread_mutex_unlock(&global_lock);
 
+        tegra_surface_cache_surface_update_last_use(old);
+        old->detached = true;
         unref_surface(old);
     } else {
         new = old;
     }
 
     unref_surface(old);
+    pthread_mutex_unlock(&shared_lock);
 
     return new;
 }

@@ -223,7 +223,7 @@ void unmap_surface_data(tegra_surface *surf)
     pthread_mutex_unlock(&surf->lock);
 }
 
-int alloc_surface_data(tegra_surface *surf)
+static int __alloc_surface_data(tegra_surface *surf)
 {
     tegra_device *dev                   = surf->dev;
     uint32_t width                      = surf->width;
@@ -488,6 +488,16 @@ err_cleanup:
     return ret;
 }
 
+int alloc_surface_data(tegra_surface *surf)
+{
+    if (__alloc_surface_data(surf)) {
+        tegra_surface_drop_caches();
+        return __alloc_surface_data(surf);
+    }
+
+    return 0;
+}
+
 int release_surface_data(tegra_surface *surf)
 {
     assert(surf->data_allocated);
@@ -539,11 +549,19 @@ tegra_surface *alloc_surface(tegra_device *dev,
                              VdpRGBAFormat rgba_format,
                              int output, int video)
 {
-    tegra_surface *surf                 = calloc(1, sizeof(tegra_surface));
-    struct tegra_vde_h264_frame *frame  = NULL;
+    struct tegra_vde_h264_frame *frame = NULL;
     pthread_mutexattr_t mutex_attrs;
+    tegra_surface *surf;
     int ret;
 
+    surf = tegra_surface_cache_take_surface(dev, width, height,
+                                            rgba_format, output, video);
+    if (surf) {
+        surf->destroyed = false;
+        return surf;
+    }
+
+    surf = calloc(1, sizeof(tegra_surface));
     if (!surf) {
         return NULL;
     }
@@ -593,6 +611,8 @@ tegra_surface *alloc_surface(tegra_device *dev,
     tegra_stream_create(&surf->stream_3d, dev, dev->gr3d);
     tegra_stream_create(&surf->stream_2d, dev, dev->gr2d);
     ref_device(dev);
+
+    DebugMsg("surface %p output %d video %d\n", surf, output, video);
 
     return surf;
 
@@ -670,6 +690,8 @@ VdpStatus unref_surface(tegra_surface *surf)
 VdpStatus destroy_surface(tegra_surface *surf)
 {
     DebugMsg("surface %u %p\n", surf->surface_id, surf);
+
+    tegra_surface_cache_surface_update_last_use(surf);
 
     pthread_mutex_lock(&surf->lock);
     if (surf->flags & SURFACE_OUTPUT) {
