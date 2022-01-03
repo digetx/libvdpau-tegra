@@ -437,6 +437,15 @@ static VdpStatus tegra_decode_h264(tegra_decoder *dec, tegra_surface *surf,
         if (info->pic_order_cnt_type == 0) {
             if (slice_type_mod == B_FRAME) {
                 delim_pic_order_cnt = surf->pic_order_cnt;
+
+                /*
+                 * Handle broken encoders that generate B frames for baseline
+                 * profile.
+                 */
+                if (dec->is_baseline_profile) {
+                    ErrorMsg("got B frame using baseline profile\n");
+                    dec->is_baseline_profile = 0;
+                }
             }
 
             if (delim_pic_order_cnt <= 0) {
@@ -708,6 +717,13 @@ static VdpStatus tegra_decode_h264_v4l2(tegra_decoder *dec, tegra_surface *surf,
     if (info->entropy_coding_mode_flag) {
         ErrorMsg("CABAC decoding unimplemented\n");
         return VDP_STATUS_NO_IMPLEMENTATION;
+    }
+
+    if (slice_type_mod == B_FRAME) {
+        if (dec->is_baseline_profile) {
+            ErrorMsg("got B frame using baseline profile\n");
+            dec->is_baseline_profile = 0;
+        }
     }
 
     if (slice_type_mod == I_FRAME)
