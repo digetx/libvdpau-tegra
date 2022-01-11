@@ -26,8 +26,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "uapi/videodev2.h"
-
 #include "vdpau_tegra.h"
 
 static bool v4l2_type_is_output(unsigned int type)

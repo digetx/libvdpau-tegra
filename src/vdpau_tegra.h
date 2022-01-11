@@ -74,9 +74,8 @@
 #include "uapi/dma-buf.h"
 #include "uapi/tegra-vde.h"
 #include "uapi/tegra-vde-v1.h"
-
-#include <linux/media.h>
-#include <linux/videodev2.h>
+#include "uapi/media.h"
+#include "uapi/videodev2.h"
 
 #include "media.h"
 #include "v4l2.h"
