@@ -393,10 +393,9 @@ static int __alloc_surface_data(tegra_surface *surf)
                      ret, strerror(-ret));
             goto err_cleanup;
         }
-
-done_aux:
     }
 
+done_aux:
     if (output && !tegra_vdpau_force_dri) {
         int format_id = -1;
 
