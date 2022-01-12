@@ -45,8 +45,9 @@ There is PKGBUILD in https://aur.archlinux.org/packages/libvdpau-tegra-git/.
 ### Fedora
 
 ```
-sudo dnf config-manager --add-repo https://repos.fedorapeople.org/repos/kwizart/ac100/fedora-ac100.repo
-sudo dnf install libvdpau-tegra
+sudo dnf copr enable kwizart/grate-driver
+sudo dnf update
+sudo dnf install xorg-x11-drv-opentegra libvdpau-tegra grate
 ```
 
 ### From sources
