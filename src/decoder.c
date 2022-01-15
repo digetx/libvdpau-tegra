@@ -121,7 +121,8 @@ static VdpStatus copy_bitstream_to_dmabuf(tegra_decoder *dec,
 
     /* at first try to allocate / reserve 512KB for common allocations */
     if (total_size + 16 <= 512 * 1024) {
-        aligned_size = ALIGN(total_size + 16, 512 * 1024);
+        aligned_size = max(total_size + 16, dec->bitstream_min_size);
+        aligned_size = ALIGN(aligned_size, 512 * 1024);
         *bo = alloc_data(dec, (void **)&start, data_fd, aligned_size);
     }
 
@@ -1088,6 +1089,8 @@ VdpStatus vdp_decoder_create(VdpDevice device,
         DebugMsg("V4L2 initialized\n");
     else
         DebugMsg("V4L2 support undetected\n");
+
+    dec->bitstream_min_size = ALIGN(dec->bitstream_min_size, 512 * 1024);
 
     *decoder = i;
 
