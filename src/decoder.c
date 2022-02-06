@@ -702,7 +702,7 @@ static VdpStatus tegra_decode_h264_v4l2(tegra_decoder *dec, tegra_surface *surf,
     struct v4l2_ctrl_h264_decode_params decode = { 0 };
     unsigned int slice_type = get_slice_type(reader);
     unsigned int slice_type_mod = slice_type % 5;
-    unsigned int i, buf_idx, buf_flags = 0;
+    unsigned int i, buf_idx;
     unsigned int bitstream_offset = 0;
     struct v4l2_ctrl_h264_sps sps = { 0 };
     struct v4l2_ctrl_h264_pps pps = { 0 };
@@ -726,13 +726,6 @@ static VdpStatus tegra_decode_h264_v4l2(tegra_decoder *dec, tegra_surface *surf,
             dec->is_baseline_profile = 0;
         }
     }
-
-    if (slice_type_mod == I_FRAME)
-        buf_flags |= V4L2_BUF_FLAG_KEYFRAME;
-    if (slice_type_mod == P_FRAME)
-        buf_flags |= V4L2_BUF_FLAG_PFRAME;
-    if (slice_type_mod == B_FRAME)
-        buf_flags |= V4L2_BUF_FLAG_BFRAME;
 
     if (surf->v4l2.buf_idx >= 0) {
         for (buf_idx = 0; buf_idx < dec->v4l2.num_buffers; buf_idx++) {
@@ -791,6 +784,11 @@ reinit_surface:
 
     h264_vdpau_picture_to_v4l2(dec, info, &decode, &sps, &pps);
 
+    if (slice_type_mod == P_FRAME)
+        decode.flags |= V4L2_H264_DECODE_PARAM_FLAG_PFRAME;
+    if (slice_type_mod == B_FRAME)
+        decode.flags |= V4L2_H264_DECODE_PARAM_FLAG_BFRAME;
+
     err = media_request_reinit(dec->v4l2.request_fd);
     if (err)
         return VDP_STATUS_ERROR;
@@ -820,7 +818,7 @@ reinit_surface:
                             &bitstream_size,
                             &bitstream_data_size,
                             &bitstream_offset,
-                            1, buf_flags);
+                            1, 0);
     if (err)
         return VDP_STATUS_ERROR;
 
